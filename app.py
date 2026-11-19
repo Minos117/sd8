@@ -111,7 +111,7 @@ def _load_bundled_fonts():
 
 _load_bundled_fonts()
 
-APP_VER = "0.9.3"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
+APP_VER = "0.9.4"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
 TEMPLATE_DIR = BASE_DIR / "templates"
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -220,14 +220,91 @@ class LabelChip(ctk.CTkLabel):
         )
 
 
-def make_entry(parent, width=140, justify="left"):
+def make_entry(parent, width=140, justify="left", var=None):
     return ctk.CTkEntry(
-        parent, width=width, height=34, corner_radius=0,
+        parent, width=width, height=34, corner_radius=0, textvariable=var,
         fg_color=COLOR_ENTRY_BG, text_color=COLOR_ENTRY_TEXT,
         border_width=2, border_color=COLOR_ENTRY_BORDER,
         font=ui_font(16),
         justify=justify,
     )
+
+
+class VarEntry:
+    """หน้าตาเหมือน Entry (get/delete/insert) แต่ผูกกับตัวแปรกลาง -> โค้ดเดิมใช้ต่อได้ และทุกหน้าเห็นค่าเดียวกัน"""
+
+    def __init__(self, var):
+        self.var = var
+
+    def get(self):
+        return self.var.get()
+
+    def delete(self, first=0, last=None):
+        self.var.set("")
+
+    def insert(self, index, text):
+        self.var.set(str(text) + self.var.get())
+
+
+def _f(label, key, w, lw=90):
+    return ("f", label, key, w, lw)
+
+
+_PERSON_FULL = ("ข้อมูลบุคคล", [
+    [_f("ยศ", "yos", 110, 70), _f("ชื่อ-สกุล", "name", 380)],
+    [_f("ปีเกิด (พ.ศ.)", "birth_year", 80, 110), _f("ปีอ้างอิง", "ref_year", 80), ("age",)],
+    [_f("สัญชาติ", "nationality", 90), _f("เชื้อชาติ", "ethnicity", 90)],
+])
+_PERSON_SD8 = ("ข้อมูลบุคคล", [
+    [_f("ยศ", "yos", 110, 70), _f("ชื่อ-สกุล", "name", 380)],
+    [_f("ปีเกิด (พ.ศ.)", "birth_year", 80, 110)],
+])
+_PERSON_NAME = ("ข้อมูลบุคคล", [[_f("ชื่อ-สกุล", "name", 460)]])
+_PERSON_NAME_YEAR = ("ข้อมูลบุคคล", [
+    [_f("ชื่อ-สกุล", "name", 460)],
+    [_f("ปีเกิด (พ.ศ.)", "birth_year", 80, 110)],
+])
+_BIRTHDATE = ("วันเดือนปีเกิด", [
+    [_f("เกิดวันที่", "birth_day", 55), ("e", "birth_month", 110), ("e", "birth_yearfull", 80)],
+])
+_ADDR = ("ที่อยู่ตามภูมิลำเนาทหาร", [
+    [_f("บ้านเลขที่", "address_no", 120), _f("หมู่ที่", "moo", 70, 70)],
+    [_f("ตำบล", "tambon", 150), _f("อำเภอ", "amphoe", 150)],
+    [_f("จังหวัด", "province", 150), _f("เลขบัตร ปชช.", "idcard", 180, 110)],
+])
+_PARENTS = ("บิดา - มารดา", [
+    [_f("ชื่อบิดา", "father_first", 140), _f("สกุลบิดา", "father_last", 140)],
+    [_f("ชื่อมารดา", "mother_first", 140), _f("สกุลมารดา", "mother_last", 140)],
+])
+_MILNO = ("หมายเลขทหาร", [
+    [_f("สังกัด,ปี", "tb_prefix", 60, 60), ("e", "tb_year", 80),
+     _f("จังหวัด,ลำดับ", "jw_prefix", 60, 70), ("e", "jw_number", 80)],
+])
+_CFSD = ("รับรองพลทหาร", [
+    [_f("สังกัด", "unit", 380)],
+    [_f("ผลัดที่", "conscript_batch", 80), _f("ประจำปี", "conscript_year", 100)],
+    [_f("ปลดวันที่", "release_day", 55), ("e", "release_month", 110), ("e", "release_year", 80)],
+])
+_RELEASE = ("วันปลด", [
+    [_f("ปลดวันที่", "release_day", 55), ("e", "release_month", 110), ("e", "release_year", 80)],
+])
+_SD43 = ("ผลตรวจเลือก / สด.43", [
+    [_f("วันที่เกณฑ์", "draft_date", 200, 100), _f("บัญชี", "roll_no", 340, 80)],
+    [_f("จำนวนนับที่", "count_no", 100, 100), _f("สด.43 เลขที่", "sd43_no", 120, 100)],
+    [_f("คนจำพวกที่", "class_type", 80, 100), _f("ส่วนสูง (ซม.)", "height_cm", 80, 100),
+     _f("รอบตัว (ซม.)", "chest_cm", 80, 100)],
+    [_f("จับสลากได้", "lottery_result", 300, 100), ("hint", '(กรอก "ดำ" หรือ "แดง")')],
+])
+
+# ฟอร์มของแต่ละเอกสาร: แสดงเฉพาะช่องที่เอกสารนั้นใช้ (อิงตัวแปรใน templates/*.docx)
+DOC_FORMS = {
+    "PK14": [_PERSON_FULL, _ADDR, _PARENTS, _MILNO],
+    "SD8": [_PERSON_SD8, _ADDR, _PARENTS, _MILNO],
+    "CFSD": [_PERSON_NAME, _BIRTHDATE, _ADDR, _PARENTS, _CFSD],
+    "CFRD": [_PERSON_NAME, _BIRTHDATE, _ADDR, _PARENTS, _RELEASE],
+    "CFRT": [_PERSON_NAME, _BIRTHDATE, _ADDR, _PARENTS, _SD43],
+    "NEWRT": [_PERSON_NAME_YEAR, _ADDR, _PARENTS, _SD43],
+}
 
 
 class App(ctk.CTk):
@@ -246,8 +323,18 @@ class App(ctk.CTk):
         except Exception:
             pass
 
-        self.entries = {}
         self.status_var = ctk.StringVar(value="พร้อมใช้งาน")
+        # ตัวแปรกลางของทุกช่อง (ผูกกับทุกหน้าฟอร์ม) + ตัวห่อที่หน้าตาเหมือน Entry ให้โค้ดเดิมใช้ต่อได้
+        self.vars = {k: ctk.StringVar() for k in ALL_FIELD_KEYS}
+        self.entries = {k: VarEntry(v) for k, v in self.vars.items()}
+        self.age_labels = []
+        self.vars["nationality"].set("ไทย")
+        self.vars["ethnicity"].set("ไทย")
+        self.vars["ref_year"].set(str(datetime.now().year + 543))
+        self.vars["tb_prefix"].set("ท.บ.")
+        self.vars["jw_prefix"].set("ส.น.")
+        for _k in ("birth_year", "ref_year"):
+            self.vars[_k].trace_add("write", lambda *a: self._update_age())
 
         self._build_header()
         self._build_workspace()
@@ -301,7 +388,7 @@ class App(ctk.CTk):
             font=ui_font(25, "bold"), text_color=COLOR_TEXT_LIGHT, anchor="w",
         ).pack(anchor="w", pady=(2, 0))
         ctk.CTkLabel(
-            title_box, text="  กรอกข้อมูลครั้งเดียว แล้วเลือก Export เอกสารที่ต้องการจากแถบด้านขวา",
+            title_box, text="  เลือกเอกสารทางซ้าย กรอกฟอร์ม (หรือดึงจากเว็บ) แล้วกดสร้างด้านล่าง",
             font=ui_font(13), text_color=COLOR_TEXT_MUTED, anchor="w",
         ).pack(anchor="w", pady=(2, 0))
 
@@ -326,39 +413,20 @@ class App(ctk.CTk):
             command=lambda: self._check_update(silent=False),
         ).pack(pady=(8, 0))
 
+    # ------------------------------------------------------------
+    # โครงหน้าจอ: ซ้าย = เลือกเอกสาร / ขวา = ฟอร์มของเอกสารนั้น
+    # ทุกช่องใช้ตัวแปรกลางชุดเดียว (self.vars) -> ค่าเหมือนกันใช้ร่วมทุกเอกสาร แก้ที่ไหนเปลี่ยนทุกที่
+    # ------------------------------------------------------------
     def _build_workspace(self):
         self.workspace = ctk.CTkFrame(self, fg_color="transparent")
         self.workspace.pack(fill="both", expand=True, padx=20, pady=(0, 14))
-        self.workspace.grid_columnconfigure(0, weight=1)
-        self.workspace.grid_columnconfigure(1, weight=0)
+        self.workspace.grid_columnconfigure(0, weight=0)
+        self.workspace.grid_columnconfigure(1, weight=1)
         self.workspace.grid_rowconfigure(0, weight=1)
 
-        self._build_tabs()
-        self._build_button_bar()
-
-    def _build_tabs(self):
-        self.tabview = ctk.CTkTabview(
-            self.workspace, fg_color=COLOR_CARD, border_width=2, border_color=COLOR_BORDER,
-            segmented_button_fg_color=COLOR_PANEL_HEADER,
-            segmented_button_selected_color=COLOR_TAB_SELECTED,
-            segmented_button_unselected_color=COLOR_BTN_SECONDARY,
-            segmented_button_selected_hover_color=COLOR_TAB_HOVER,
-            text_color=COLOR_TEXT_LIGHT, corner_radius=0,
-        )
-        self.tabview.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=0)
-
-        tab_personal = self.tabview.add("ข้อมูลส่วนตัว")
-        tab_conscript = self.tabview.add("ตรวจเลือกทหาร / รด.")
-        tab_sd43 = self.tabview.add("ใบแทน สด.43")
-
-        self._build_personal_tab(tab_personal)
-        self._build_conscript_tab(tab_conscript)
-        self._build_sd43_tab(tab_sd43)
-
-        try:
-            self.tabview._segmented_button.configure(font=ui_font(16, "bold"))
-        except Exception:
-            pass
+        self._build_sidebar()
+        self._build_form_area()
+        self._select_doc("PK14")
 
     def _row(self, parent, r, pady=6):
         f = ctk.CTkFrame(parent, fg_color="transparent")
@@ -372,294 +440,139 @@ class App(ctk.CTk):
         )
         lbl.grid(row=r, column=0, sticky="w", padx=4, pady=(14, 2))
 
-    # ---------------- TAB 1: ข้อมูลส่วนตัว ----------------
-    def _build_personal_tab(self, tab):
-        # ห่อเนื้อหาด้วย ScrollableFrame เสมอ - ป้องกันฟิลด์ท้ายๆ (เช่น ทบ./ส.น.)
-        # ถูกตัดหายเวลาหน้าจอ/หน้าต่างเตี้ยกว่าความสูงของเนื้อหาทั้งหมด
-        parent = ctk.CTkScrollableFrame(
-            tab, fg_color="transparent",
-            scrollbar_button_color=COLOR_BTN_TERTIARY,
-            scrollbar_button_hover_color=COLOR_GOLD,
-        )
-        parent.pack(fill="both", expand=True)
-        parent.grid_columnconfigure(0, weight=1)
-        r = 0
-
-        row = self._row(parent, r); r += 1
-        LabelChip(row, "ยศ", width=70).pack(side="left", padx=(0, 4))
-        self.entries["yos"] = make_entry(row, width=110)
-        self.entries["yos"].pack(side="left", padx=(0, 10))
-        LabelChip(row, "ชื่อ-สกุล", width=90).pack(side="left", padx=(0, 4))
-        self.entries["name"] = make_entry(row, width=380)
-        self.entries["name"].pack(side="left")
-
-        row = self._row(parent, r); r += 1
-        LabelChip(row, "ปีเกิด (พ.ศ.)", width=110).pack(side="left", padx=(0, 4))
-        self.entries["birth_year"] = make_entry(row, width=80)
-        self.entries["birth_year"].pack(side="left", padx=(0, 10))
-        LabelChip(row, "ปีอ้างอิง", width=90).pack(side="left", padx=(0, 4))
-        self.entries["ref_year"] = make_entry(row, width=80)
-        self.entries["ref_year"].pack(side="left", padx=(0, 10))
-        self.entries["ref_year"].insert(0, str(datetime.now().year + 543))
-        LabelChip(row, "อายุ", width=60).pack(side="left", padx=(0, 4))
-        self.age_display = ctk.CTkLabel(
-            row, text="-", width=60, height=34, fg_color=COLOR_LABEL_CHIP,
-            text_color=COLOR_LABEL_TEXT, corner_radius=0, font=ui_font(16, "bold"),
-        )
-        self.age_display.pack(side="left")
-
-        row = self._row(parent, r); r += 1
-        LabelChip(row, "สัญชาติ", width=90).pack(side="left", padx=(0, 4))
-        self.entries["nationality"] = make_entry(row, width=90)
-        self.entries["nationality"].pack(side="left", padx=(0, 10))
-        self.entries["nationality"].insert(0, "ไทย")
-        LabelChip(row, "เชื้อชาติ", width=90).pack(side="left", padx=(0, 4))
-        self.entries["ethnicity"] = make_entry(row, width=90)
-        self.entries["ethnicity"].pack(side="left")
-        self.entries["ethnicity"].insert(0, "ไทย")
-
-        self._section_title(parent, r, "ที่อยู่ตามภูมิลำเนาทหาร"); r += 1
-
-        row = self._row(parent, r); r += 1
-        LabelChip(row, "บ้านเลขที่", width=90).pack(side="left", padx=(0, 4))
-        self.entries["address_no"] = make_entry(row, width=120)
-        self.entries["address_no"].pack(side="left", padx=(0, 10))
-        LabelChip(row, "หมู่ที่", width=70).pack(side="left", padx=(0, 4))
-        self.entries["moo"] = make_entry(row, width=70)
-        self.entries["moo"].pack(side="left")
-
-        row = self._row(parent, r); r += 1
-        LabelChip(row, "ตำบล", width=90).pack(side="left", padx=(0, 4))
-        self.entries["tambon"] = make_entry(row, width=150)
-        self.entries["tambon"].pack(side="left", padx=(0, 10))
-        LabelChip(row, "อำเภอ", width=90).pack(side="left", padx=(0, 4))
-        self.entries["amphoe"] = make_entry(row, width=150)
-        self.entries["amphoe"].pack(side="left")
-
-        row = self._row(parent, r); r += 1
-        LabelChip(row, "จังหวัด", width=90).pack(side="left", padx=(0, 4))
-        self.entries["province"] = make_entry(row, width=150)
-        self.entries["province"].pack(side="left", padx=(0, 10))
-        LabelChip(row, "เลขบัตร ปชช.", width=110).pack(side="left", padx=(0, 4))
-        self.entries["idcard"] = make_entry(row, width=180)
-        self.entries["idcard"].pack(side="left")
-
-        self._section_title(parent, r, "บิดา - มารดา"); r += 1
-
-        row = self._row(parent, r); r += 1
-        LabelChip(row, "ชื่อบิดา", width=90).pack(side="left", padx=(0, 4))
-        self.entries["father_first"] = make_entry(row, width=140)
-        self.entries["father_first"].pack(side="left", padx=(0, 10))
-        LabelChip(row, "สกุลบิดา", width=90).pack(side="left", padx=(0, 4))
-        self.entries["father_last"] = make_entry(row, width=140)
-        self.entries["father_last"].pack(side="left")
-
-        row = self._row(parent, r); r += 1
-        LabelChip(row, "ชื่อมารดา", width=90).pack(side="left", padx=(0, 4))
-        self.entries["mother_first"] = make_entry(row, width=140)
-        self.entries["mother_first"].pack(side="left", padx=(0, 10))
-        LabelChip(row, "สกุลมารดา", width=90).pack(side="left", padx=(0, 4))
-        self.entries["mother_last"] = make_entry(row, width=140)
-        self.entries["mother_last"].pack(side="left")
-
-        self._section_title(parent, r, "หมายเลขทหาร"); r += 1
-
-        row = self._row(parent, r); r += 1
-        LabelChip(row, "สังกัด,ปี", width=60).pack(side="left", padx=(0, 4))
-        self.entries["tb_prefix"] = make_entry(row, width=60)
-        self.entries["tb_prefix"].pack(side="left", padx=(0, 6))
-        self.entries["tb_prefix"].insert(0, "ท.บ.")
-        self.entries["tb_year"] = make_entry(row, width=80)
-        self.entries["tb_year"].pack(side="left", padx=(0, 16))
-        LabelChip(row, "จังหวัด,ลำดับ", width=70).pack(side="left", padx=(0, 4))
-        self.entries["jw_prefix"] = make_entry(row, width=60)
-        self.entries["jw_prefix"].pack(side="left", padx=(0, 6))
-        self.entries["jw_prefix"].insert(0, "ส.น.")
-        self.entries["jw_number"] = make_entry(row, width=80)
-        self.entries["jw_number"].pack(side="left")
-
-        self.entries["birth_year"].bind("<KeyRelease>", lambda e: self._update_age())
-        self.entries["ref_year"].bind("<KeyRelease>", lambda e: self._update_age())
-
-    # ---------------- TAB 2: ตรวจเลือกทหาร / รด. ----------------
-    def _build_conscript_tab(self, tab):
-        parent = ctk.CTkScrollableFrame(
-            tab, fg_color="transparent",
-            scrollbar_button_color=COLOR_BTN_TERTIARY,
-            scrollbar_button_hover_color=COLOR_GOLD,
-        )
-        parent.pack(fill="both", expand=True)
-        parent.grid_columnconfigure(0, weight=1)
-        r = 0
-
-        self._section_title(parent, r, "ใช้กับเอกสาร: รับรองพลทหาร / รับรอง รด. ปี 3"); r += 1
-
-        row = self._row(parent, r); r += 1
-        LabelChip(row, "เกิดวันที่", width=90).pack(side="left", padx=(0, 4))
-        self.entries["birth_day"] = make_entry(row, width=55)
-        self.entries["birth_day"].pack(side="left", padx=(0, 6))
-        self.entries["birth_month"] = make_entry(row, width=110)
-        self.entries["birth_month"].pack(side="left", padx=(0, 6))
-        self.entries["birth_yearfull"] = make_entry(row, width=80)
-        self.entries["birth_yearfull"].pack(side="left")
-
-        row = self._row(parent, r); r += 1
-        LabelChip(row, "สังกัด", width=90).pack(side="left", padx=(0, 4))
-        self.entries["unit"] = make_entry(row, width=380)
-        self.entries["unit"].pack(side="left")
-
-        row = self._row(parent, r); r += 1
-        LabelChip(row, "ผลัดที่", width=90).pack(side="left", padx=(0, 4))
-        self.entries["conscript_batch"] = make_entry(row, width=80)
-        self.entries["conscript_batch"].pack(side="left", padx=(0, 10))
-        LabelChip(row, "ประจำปี", width=90).pack(side="left", padx=(0, 4))
-        self.entries["conscript_year"] = make_entry(row, width=100)
-        self.entries["conscript_year"].pack(side="left")
-
-        row = self._row(parent, r); r += 1
-        LabelChip(row, "ปลดวันที่", width=90).pack(side="left", padx=(0, 4))
-        self.entries["release_day"] = make_entry(row, width=55)
-        self.entries["release_day"].pack(side="left", padx=(0, 6))
-        self.entries["release_month"] = make_entry(row, width=110)
-        self.entries["release_month"].pack(side="left", padx=(0, 6))
-        self.entries["release_year"] = make_entry(row, width=80)
-        self.entries["release_year"].pack(side="left")
-
-    # ---------------- TAB 3: ใบแทน สด.43 ----------------
-    def _build_sd43_tab(self, tab):
-        parent = ctk.CTkScrollableFrame(
-            tab, fg_color="transparent",
-            scrollbar_button_color=COLOR_BTN_TERTIARY,
-            scrollbar_button_hover_color=COLOR_GOLD,
-        )
-        parent.pack(fill="both", expand=True)
-        parent.grid_columnconfigure(0, weight=1)
-        r = 0
-
-        self._section_title(parent, r, "ใช้กับเอกสาร: รับรองผลตรวจเลือก (CFRT) / ขอใบแทน สด.43 (NEWRT)"); r += 1
-
-        row = self._row(parent, r); r += 1
-        LabelChip(row, "วันที่เกณฑ์", width=100).pack(side="left", padx=(0, 4))
-        self.entries["draft_date"] = make_entry(row, width=200)
-        self.entries["draft_date"].pack(side="left", padx=(0, 10))
-        LabelChip(row, "บัญชี", width=80).pack(side="left", padx=(0, 4))
-        self.entries["roll_no"] = make_entry(row, width=340)
-        self.entries["roll_no"].pack(side="left")
-
-        row = self._row(parent, r); r += 1
-        LabelChip(row, "จำนวนนับที่", width=100).pack(side="left", padx=(0, 4))
-        self.entries["count_no"] = make_entry(row, width=100)
-        self.entries["count_no"].pack(side="left", padx=(0, 10))
-        LabelChip(row, "สด.43 เลขที่", width=100).pack(side="left", padx=(0, 4))
-        self.entries["sd43_no"] = make_entry(row, width=120)
-        self.entries["sd43_no"].pack(side="left")
-
-        row = self._row(parent, r); r += 1
-        LabelChip(row, "คนจำพวกที่", width=100).pack(side="left", padx=(0, 4))
-        self.entries["class_type"] = make_entry(row, width=80)
-        self.entries["class_type"].pack(side="left", padx=(0, 10))
-        LabelChip(row, "ส่วนสูง (ซม.)", width=100).pack(side="left", padx=(0, 4))
-        self.entries["height_cm"] = make_entry(row, width=80)
-        self.entries["height_cm"].pack(side="left", padx=(0, 10))
-        LabelChip(row, "รอบตัว (ซม.)", width=100).pack(side="left", padx=(0, 4))
-        self.entries["chest_cm"] = make_entry(row, width=80)
-        self.entries["chest_cm"].pack(side="left")
-
-        row = self._row(parent, r); r += 1
-        LabelChip(row, "จับสลากได้", width=100).pack(side="left", padx=(0, 4))
-        self.entries["lottery_result"] = make_entry(row, width=300)
-        self.entries["lottery_result"].pack(side="left")
-        ctk.CTkLabel(
-            row, text='(กรอก "ดำ" หรือ "แดง")', font=ui_font(13),
-            text_color=COLOR_TEXT_MUTED,
-        ).pack(side="left", padx=(10, 0))
-
-    def _build_button_bar(self):
-        # Export panel อยู่ด้านขวาของหน้าจอ
+    # ---------- ซ้าย: เลือกเอกสาร ----------
+    def _build_sidebar(self):
         panel = ctk.CTkFrame(
-            self.workspace, width=380, fg_color=COLOR_SURFACE,
+            self.workspace, width=250, fg_color=COLOR_SURFACE,
             corner_radius=0, border_width=2, border_color=COLOR_BORDER,
         )
-        panel.grid(row=0, column=1, sticky="ns")
+        panel.grid(row=0, column=0, sticky="ns", padx=(0, 10))
         panel.grid_propagate(False)
+        panel.pack_propagate(False)
 
-        # ปักหมุดปุ่ม "เปิดโฟลเดอร์ Export" ไว้ล่างสุดก่อนเป็นอันดับแรก
-        # เพื่อไม่ให้ถูกดันหายไปเวลาหน้าต่างเตี้ยลง (แก้ปัญหาปุ่มตก)
-        ctk.CTkButton(
-            panel, text="เปิดโฟลเดอร์ Export", height=46,
-            fg_color=COLOR_BTN_SECONDARY, hover_color=COLOR_BTN_TERTIARY,
-            text_color=COLOR_SILVER, corner_radius=0,
-            font=ui_font(14, "bold"),
-            command=lambda: open_path(OUTPUT_DIR),
-        ).pack(side="bottom", fill="x", padx=18, pady=(12, 18))
-
-        ctk.CTkFrame(panel, height=1, fg_color=COLOR_BORDER).pack(
-            side="bottom", fill="x", padx=18, pady=(0, 4)
-        )
-
-        # ส่วนปุ่ม Export ทั้งหมดอยู่ในกรอบเลื่อนได้ (scrollable) แทนที่จะ
-        # ยาวเกินขอบแล้วมองไม่เห็น — ถ้าพื้นที่ไม่พอจะเลื่อนดูได้แทนการหาย
-        # หมายเหตุ: กำหนด fg_color ให้ตรงกับพื้นการ์ด (แทน "transparent")
-        # และเว้นระยะขอบให้พ้นมุมโค้งของการ์ดด้านนอก (panel corner_radius=0)
-        # ป้องกันมุมเหลี่ยมของกรอบเลื่อน (canvas ด้านในเป็นสี่เหลี่ยมเสมอ)
-        # โผล่ทะลุออกมานอกมุมโค้งของการ์ด กลายเป็นสี่เหลี่ยมขาวยื่นออกมา
-        scroll = ctk.CTkScrollableFrame(
-            panel, fg_color=COLOR_SURFACE, corner_radius=0,
-            scrollbar_button_color=COLOR_BTN_TERTIARY,
-            scrollbar_button_hover_color=COLOR_GOLD,
-        )
-        scroll.pack(side="top", fill="both", expand=True, padx=10, pady=(10, 0))
-
-        top = ctk.CTkFrame(scroll, fg_color="transparent")
-        top.pack(fill="x", padx=18, pady=(18, 10))
-        ctk.CTkLabel(
-            top, text="EXPORT CENTER", font=pixel_font(13),
-            text_color=COLOR_GOLD, anchor="w",
-        ).pack(anchor="w")
-        ctk.CTkLabel(
-            top, text="เลือกเอกสารที่ต้องการสร้าง", font=ui_font(13),
-            text_color=COLOR_TEXT_MUTED, anchor="w",
-        ).pack(anchor="w", pady=(3, 0))
+        ctk.CTkLabel(panel, text="DOCUMENTS", font=pixel_font(13), text_color=COLOR_GOLD,
+                     anchor="w").pack(anchor="w", padx=16, pady=(16, 0))
+        ctk.CTkLabel(panel, text="เลือกเอกสารที่ต้องการกรอก", font=ui_font(13),
+                     text_color=COLOR_TEXT_MUTED, anchor="w").pack(anchor="w", padx=16, pady=(2, 10))
 
         self.web_btn = ctk.CTkButton(
-            scroll, text="ดึงข้อมูลจากเว็บ TDC", height=44,
+            panel, text="ดึงข้อมูลจากเว็บ TDC", height=44,
             fg_color=COLOR_BTN_SECONDARY, hover_color=COLOR_BTN_TERTIARY,
             text_color=COLOR_GOLD, corner_radius=0, font=ui_font(14, "bold"),
             command=self._pull_from_web,
         )
-        self.web_btn.pack(fill="x", padx=18, pady=(0, 8))
+        self.web_btn.pack(fill="x", padx=14, pady=(0, 8))
+        ctk.CTkLabel(panel, text="ดึงครั้งเดียว ข้อมูลเติมให้ทุกเอกสาร", font=ui_font(12),
+                     text_color=COLOR_TEXT_MUTED, anchor="w").pack(anchor="w", padx=16, pady=(0, 6))
+        ctk.CTkFrame(panel, height=1, fg_color=COLOR_BORDER).pack(fill="x", padx=14, pady=(2, 10))
 
-        ctk.CTkFrame(scroll, height=1, fg_color=COLOR_BORDER).pack(
-            fill="x", padx=18, pady=(4, 12)
+        self.doc_buttons = {}
+        for group, title in (("หลัก", "เอกสารหลัก"), ("สด.43", "เอกสาร สด.43")):
+            ctk.CTkLabel(panel, text=title, font=ui_font(13, "bold"),
+                         text_color=COLOR_TEXT_MUTED, anchor="w").pack(anchor="w", padx=16, pady=(4, 4))
+            for key, info in DOCS.items():
+                if info["group"] != group:
+                    continue
+                btn = ctk.CTkButton(
+                    panel, text=info["label"], height=46, corner_radius=0, anchor="w",
+                    fg_color=COLOR_BTN_TERTIARY, hover_color="#2E2E66",
+                    text_color=COLOR_TEXT_LIGHT, font=ui_font(15, "bold"),
+                    command=lambda k=key: self._select_doc(k),
+                )
+                btn.pack(fill="x", padx=14, pady=3)
+                self.doc_buttons[key] = btn
+
+    # ---------- ขวา: ฟอร์ม + ปุ่มสร้าง ----------
+    def _build_form_area(self):
+        area = ctk.CTkFrame(self.workspace, fg_color=COLOR_CARD, corner_radius=0,
+                            border_width=2, border_color=COLOR_BORDER)
+        area.grid(row=0, column=1, sticky="nsew")
+
+        head = ctk.CTkFrame(area, fg_color=COLOR_PANEL_HEADER, corner_radius=0)
+        head.pack(fill="x")
+        self.form_title = ctk.CTkLabel(head, text="", font=ui_font(18, "bold"),
+                                       text_color=COLOR_GOLD, anchor="w")
+        self.form_title.pack(side="left", padx=16, pady=10)
+        ctk.CTkLabel(head, text="ค่าที่ซ้ำกันใช้ร่วมกันทุกเอกสาร แก้ที่ไหนเปลี่ยนทุกที่",
+                     font=ui_font(12), text_color=COLOR_TEXT_MUTED).pack(side="right", padx=16)
+
+        bar = ctk.CTkFrame(area, fg_color=COLOR_SURFACE, corner_radius=0)
+        bar.pack(side="bottom", fill="x")
+        self.make_btn = ctk.CTkButton(
+            bar, text="สร้างเอกสารนี้", height=46, width=200, corner_radius=0,
+            fg_color=COLOR_BTN_PRIMARY, hover_color=COLOR_GOLD_HOVER, text_color="#0B0B1A",
+            font=ui_font(15, "bold"), command=lambda: self._generate(self.current_doc),
         )
+        self.make_btn.pack(side="left", padx=(14, 8), pady=10)
+        ctk.CTkButton(
+            bar, text="สร้างทั้งหมด (6 ไฟล์)", height=46, corner_radius=0,
+            fg_color=COLOR_BTN_TERTIARY, hover_color="#2E2E66", text_color=COLOR_TEXT_LIGHT,
+            font=ui_font(14, "bold"), command=self._generate_all,
+        ).pack(side="left", padx=8, pady=10)
+        ctk.CTkButton(
+            bar, text="เปิดโฟลเดอร์ Export", height=46, corner_radius=0,
+            fg_color=COLOR_BTN_SECONDARY, hover_color=COLOR_BTN_TERTIARY, text_color=COLOR_SILVER,
+            font=ui_font(14, "bold"), command=lambda: open_path(OUTPUT_DIR),
+        ).pack(side="right", padx=14, pady=10)
 
-        main_docs = [k for k, v in DOCS.items() if v["group"] == "หลัก"]
-        sd43_docs = [k for k, v in DOCS.items() if v["group"] == "สด.43"]
+        self.form_host = ctk.CTkFrame(area, fg_color="transparent", corner_radius=0)
+        self.form_host.pack(fill="both", expand=True, padx=8, pady=8)
+        self.pages = {}
+        self.current_doc = None
 
-        self._export_section(scroll, "เอกสารหลัก", main_docs, primary=True)
-        self._export_section(scroll, "เอกสาร สด.43", sd43_docs, primary=False)
+    def _select_doc(self, key):
+        if self.current_doc and self.current_doc in self.pages:
+            self.pages[self.current_doc].pack_forget()
+        if key not in self.pages:
+            self.pages[key] = self._build_page(key)
+        self.pages[key].pack(fill="both", expand=True)
+        self.current_doc = key
+        for k, b in self.doc_buttons.items():
+            on = k == key
+            b.configure(fg_color=COLOR_GOLD if on else COLOR_BTN_TERTIARY,
+                        text_color="#0B0B1A" if on else COLOR_TEXT_LIGHT,
+                        hover_color=COLOR_GOLD_HOVER if on else "#2E2E66")
+        self.form_title.configure(text=f"ฟอร์ม: {DOCS[key]['label']}")
+        self.make_btn.configure(text=f"สร้าง {DOCS[key]['label']}")
+        self._update_age()
 
-    def _export_section(self, parent, title, keys, primary=False):
-        box = ctk.CTkFrame(parent, fg_color="transparent")
-        box.pack(fill="x", padx=18, pady=(0, 12))
-        ctk.CTkLabel(
-            box, text=title, font=ui_font(13, "bold"),
-            text_color=COLOR_TEXT_MUTED, anchor="w",
-        ).pack(anchor="w", pady=(0, 7))
+    def _build_page(self, doc_key):
+        page = ctk.CTkScrollableFrame(
+            self.form_host, fg_color="transparent",
+            scrollbar_button_color=COLOR_BTN_TERTIARY,
+            scrollbar_button_hover_color=COLOR_GOLD,
+        )
+        page.grid_columnconfigure(0, weight=1)
+        r = 0
+        for title, rows in DOC_FORMS[doc_key]:
+            self._section_title(page, r, title); r += 1
+            for spec_row in rows:
+                row = self._row(page, r); r += 1
+                for i, spec in enumerate(spec_row):
+                    last = i == len(spec_row) - 1
+                    pad = (0, 0) if last else (0, 10)
+                    if spec[0] == "f":
+                        _, label, key, w, lw = spec
+                        LabelChip(row, label, width=lw).pack(side="left", padx=(0, 4))
+                        self._entry(row, key, w).pack(side="left", padx=pad)
+                    elif spec[0] == "e":
+                        _, key, w = spec
+                        self._entry(row, key, w).pack(side="left", padx=(0, 6) if not last else (0, 0))
+                    elif spec[0] == "age":
+                        LabelChip(row, "อายุ", width=60).pack(side="left", padx=(0, 4))
+                        lbl = ctk.CTkLabel(
+                            row, text="-", width=60, height=34, fg_color=COLOR_LABEL_CHIP,
+                            text_color=COLOR_LABEL_TEXT, corner_radius=0, font=ui_font(16, "bold"),
+                        )
+                        lbl.pack(side="left")
+                        self.age_labels.append(lbl)
+                    elif spec[0] == "hint":
+                        ctk.CTkLabel(row, text=spec[1], font=ui_font(13),
+                                     text_color=COLOR_TEXT_MUTED).pack(side="left", padx=(10, 0))
+        return page
 
-        for key in keys:
-            color = COLOR_BTN_PRIMARY if primary else COLOR_BTN_TERTIARY
-            hover = COLOR_GOLD_HOVER if primary else "#2E2E66"
-            text_color = "#0B0B1A" if primary else COLOR_TEXT_LIGHT
-            ctk.CTkButton(
-                box,
-                text=f"EXPORT\n{DOCS[key]['label']}",
-                height=58, corner_radius=0,
-                fg_color=color, hover_color=hover, text_color=text_color,
-                font=ui_font(13, "bold"),
-                anchor="center",
-                command=lambda k=key: self._generate(k),
-            ).pack(fill="x", pady=4)
+    def _entry(self, parent, key, width):
+        return make_entry(parent, width=width, var=self.vars[key])
 
     def _build_status_bar(self):
         bar = ctk.CTkFrame(self, fg_color=COLOR_PANEL_HEADER, height=34, corner_radius=0)
@@ -679,7 +592,8 @@ class App(ctk.CTk):
         data = self._collect_data()
         from utils import compute_age
         age = compute_age(data.get("birth_year", ""), data.get("ref_year", ""))
-        self.age_display.configure(text=age if age else "-")
+        for lbl in getattr(self, "age_labels", []):
+            lbl.configure(text=age if age else "-")
 
     def _load_autosave(self):
         data = storage.load_autosave()
@@ -979,7 +893,7 @@ class App(ctk.CTk):
     # ------------------------------------------------------------
     # DOCUMENT GENERATION
     # ------------------------------------------------------------
-    def _generate(self, doc_key: str):
+    def _generate(self, doc_key: str, quiet: bool = False):
         info = DOCS[doc_key]
         template_path = TEMPLATE_DIR / info["file"]
 
@@ -989,13 +903,13 @@ class App(ctk.CTk):
                 f"ไม่พบไฟล์ {info['file']} ในโฟลเดอร์:\n{TEMPLATE_DIR}\n\n"
                 f"กรุณานำไฟล์ .docx ต้นแบบไปวางในโฟลเดอร์ templates ก่อนใช้งาน",
             )
-            return
+            return None
 
         if not org_settings.is_configured():
             messagebox.showinfo("ยังไม่ได้ตั้งค่าหน่วยงาน",
                                 "กรุณาตั้งค่าหน่วยงาน/ผู้ลงนามก่อนสร้างเอกสาร")
             self._open_settings(first_run=True)
-            return
+            return None
 
         data = self._collect_data()
         self._update_age()
@@ -1013,10 +927,10 @@ class App(ctk.CTk):
         except Exception as e:
             traceback.print_exc()
             messagebox.showerror("เกิดข้อผิดพลาด", f"ไม่สามารถสร้างเอกสารได้:\n{e}")
-            return
+            return None
 
         left = self._leftover_placeholders(output_path)
-        if left:
+        if left and not quiet:
             messagebox.showwarning(
                 "มีช่องที่ไม่ได้เติม",
                 "ในเอกสารยังมีช่องที่ระบบไม่รู้จัก (อาจใช้โปรแกรมกับเทมเพลตคนละรุ่น):\n- "
@@ -1031,8 +945,27 @@ class App(ctk.CTk):
 
         self.status_var.set(f"สร้างไฟล์ {output_path.name} เรียบร้อยแล้ว")
 
+        if quiet:
+            return output_path
         if messagebox.askyesno("สำเร็จ", f"สร้างไฟล์ {info['label']} เรียบร้อยแล้ว\nต้องการเปิดไฟล์เลยหรือไม่?"):
             open_path(output_path)
+        return output_path
+
+    def _generate_all(self):
+        if not org_settings.is_configured():
+            messagebox.showinfo("ยังไม่ได้ตั้งค่าหน่วยงาน", "กรุณาตั้งค่าหน่วยงาน/ผู้ลงนามก่อนสร้างเอกสาร")
+            self._open_settings(first_run=True)
+            return
+        done, failed = [], []
+        for key in DOCS:
+            p = self._generate(key, quiet=True)
+            (done if p else failed).append(DOCS[key]["label"])
+        if done and messagebox.askyesno(
+                "สร้างทั้งหมดเสร็จ",
+                f"สร้างแล้ว {len(done)} ไฟล์: " + ", ".join(done)
+                + (f"\nไม่สำเร็จ: {', '.join(failed)}" if failed else "")
+                + "\n\nเปิดโฟลเดอร์ Export เลยหรือไม่?"):
+            open_path(OUTPUT_DIR)
 
     def _on_close(self):
         storage.autosave(self._collect_data())

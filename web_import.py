@@ -276,8 +276,19 @@ class WebSession:
             from playwright.sync_api import sync_playwright
             ensure_chromium_installed(self.log)
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=False)
-                page = browser.new_context().new_page()
+                # หน้า Recruit เรียก Linkage2Client ที่ 127.0.0.1 -> Chrome ถามสิทธิ์ "เข้าถึงแอปและบริการอื่นๆ ในอุปกรณ์นี้"
+                # ปิดตัวถามนี้ไว้ล่วงหน้า (ไม่ได้เปิดช่องโหว่ให้เว็บอื่น เพราะเบราว์เซอร์ตัวนี้ใช้เข้า Recruit อย่างเดียว)
+                browser = p.chromium.launch(headless=False, args=[
+                    "--disable-features=LocalNetworkAccessChecks,PrivateNetworkAccessPermissionPrompt,"
+                    "BlockInsecurePrivateNetworkRequests"])
+                ctx = browser.new_context()
+                for perm in ("local-network-access", "local-network", "loopback-network"):
+                    try:
+                        ctx.grant_permissions([perm], origin="https://recruit4.tdc.mi.th")
+                        dlog(f"perm granted: {perm}")
+                    except Exception:
+                        pass
+                page = ctx.new_page()
                 page.goto(URL)
                 dlog("run: เปิดเบราว์เซอร์สำเร็จ")
                 self.ready.set()
