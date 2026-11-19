@@ -68,7 +68,7 @@ def _direct_runs(p):
     return runs
 
 
-def _replace_in_xml_bytes(xml_bytes: bytes, mapping: dict, pattern=PLACEHOLDER_RE, resolver=None) -> bytes:
+def _replace_in_xml_bytes(xml_bytes: bytes, mapping: dict, pattern=PLACEHOLDER_RE, resolver=None, skip_time_paras=False) -> bytes:
     """pattern/resolver ใช้ตอนแปลงเทมเพลต (หาข้อความตรง ๆ แล้วแทนด้วย placeholder);
     ตอนเติมข้อมูลปกติใช้ค่าเริ่มต้น"""
     parser = etree.XMLParser(remove_blank_text=False)
@@ -82,6 +82,8 @@ def _replace_in_xml_bytes(xml_bytes: bytes, mapping: dict, pattern=PLACEHOLDER_R
         runs = _direct_runs(p)
         if not runs:
             continue
+        if skip_time_paras and any("TIME" in (i.text or "") for i in p.iter("{%s}instrText" % NSMAP["w"])):
+            continue  # ย่อหน้าที่มีฟิลด์วันที่ของ Word: ห้ามแตะ
 
         # เก็บข้อความของแต่ละ run (รองรับ run ที่ไม่มี w:t ด้วย เช่น w:br)
         run_texts = []
@@ -193,6 +195,65 @@ def _replace_in_xml_bytes(xml_bytes: bytes, mapping: dict, pattern=PLACEHOLDER_R
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
+_TH_DIG = "๐๑๒๓๔๕๖๗๘๙"
+_MON_FULL = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"]
+_MON_ABBR = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."]
+
+
+def _fmt_time_field(fmt: str, now, thai_digits: bool) -> str:
+    be = now.year + 543
+    out, i = [], 0
+    while i < len(fmt):
+        for tok, val in (("ดดดด", _MON_FULL[now.month-1]), ("ดดด", _MON_ABBR[now.month-1]),
+                         ("ปปปป", str(be)), ("ปป", str(be)[-2:]), ("bb", str(be)[-2:]),
+                         ("dd", "%02d" % now.day), ("ว", str(now.day))):
+            if fmt.startswith(tok, i):
+                out.append(val); i += len(tok); break
+        else:
+            out.append(fmt[i]); i += 1
+    t = "".join(out)
+    if thai_digits:
+        t = "".join(_TH_DIG[int(c)] if c.isdigit() else c for c in t)
+    return t
+
+
+def _refresh_time_fields(xml_bytes: bytes) -> bytes:
+    """เขียนวันที่ปัจจุบันลงผลลัพธ์ที่แคชของฟิลด์ TIME (Word จะอัปเดตเองเมื่อเปิดอยู่แล้ว
+    แต่ตัวดูตัวอย่าง/โปรแกรมอื่นจะเห็นค่าที่แคชไว้)"""
+    import datetime
+    if b"TIME" not in xml_bytes:
+        return xml_bytes
+    now = datetime.datetime.now()
+    W = "{%s}" % NSMAP["w"]
+    root = etree.fromstring(xml_bytes, etree.XMLParser(remove_blank_text=False))
+    for p in root.iter(W + "p"):
+        state, instr, res = 0, "", []
+        for r in p.iter(W + "r"):
+            fc = r.find("w:fldChar", NSMAP)
+            if fc is not None:
+                t = fc.get(W + "fldCharType")
+                if t == "begin":
+                    state, instr, res = 1, "", []
+                elif t == "separate" and state == 1:
+                    state = 2
+                elif t == "end" and state:
+                    m = re.search(r'TIME\s*\\@\s*"([^"]*)"', instr)
+                    ts = [x for x in res if x.text and x.text.strip()]
+                    if m and ts:
+                        th = any(c in _TH_DIG for x in ts for c in x.text)
+                        ts[0].text = _fmt_time_field(m.group(1), now, th)
+                        for x in ts[1:]:
+                            x.text = ""
+                    state = 0
+                continue
+            if state == 1:
+                for it in r.findall("w:instrText", NSMAP):
+                    instr += it.text or ""
+            elif state == 2:
+                res.extend(r.findall("w:t", NSMAP))
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
 def fill_docx(template_path: str, output_path: str, mapping: dict) -> None:
     """
     เปิดไฟล์ template_path (.docx) แทนที่ <<key>> ทุกจุดด้วยค่าจาก mapping (dict: key -> str)
@@ -210,7 +271,7 @@ def fill_docx(template_path: str, output_path: str, mapping: dict) -> None:
         replacements = {}
         for name in targets:
             xml_bytes = zin.read(name)
-            new_xml = _replace_in_xml_bytes(xml_bytes, mapping)
+            new_xml = _refresh_time_fields(_replace_in_xml_bytes(xml_bytes, mapping))
             replacements[name] = new_xml
 
     # เขียนไฟล์ zip ใหม่ทั้งหมด แทนที่เฉพาะ part ที่แก้ไข ส่วนที่เหลือคัดลอกเหมือนเดิม

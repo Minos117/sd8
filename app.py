@@ -111,7 +111,7 @@ def _load_bundled_fonts():
 
 _load_bundled_fonts()
 
-APP_VER = "0.9.6"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
+APP_VER = "0.9.7"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
 TEMPLATE_DIR = BASE_DIR / "templates"
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -183,8 +183,9 @@ DOCS = {
     "CFRD": {"file": "CFRD.docx", "label": "รับรอง รด. ปี 3", "group": "หนังสือรับรอง"},
     "CFRT": {"file": "CFRT.docx", "label": "รับรองผลตรวจเลือก", "group": "หนังสือรับรอง"},
     "NEWRT": {"file": "NEWRT.docx", "label": "ขอใบแทน สด.43", "group": "ขอใบแทน สด.43"},
+    "REQ": {"file": "REQ.docx", "label": "คำร้อง (สด.9 / สด.43)", "group": "คำร้อง"},
 }
-DOC_GROUPS = ["ขอใบแทน สด.8", "หนังสือรับรอง", "ขอใบแทน สด.43"]
+DOC_GROUPS = ["ขอใบแทน สด.8", "หนังสือรับรอง", "ขอใบแทน สด.43", "คำร้อง"]
 
 
 def open_path(path: Path):
@@ -305,6 +306,7 @@ DOC_FORMS = {
     "CFRD": [_PERSON_NAME, _BIRTHDATE, _ADDR, _PARENTS, _RELEASE],
     "CFRT": [_PERSON_NAME, _BIRTHDATE, _ADDR, _PARENTS, _SD43],
     "NEWRT": [_PERSON_NAME_YEAR, _ADDR, _PARENTS, _SD43],
+    "REQ": [_PERSON_NAME_YEAR, _ADDR, _PARENTS],
 }
 
 
@@ -848,7 +850,7 @@ class App(ctk.CTk):
             try:
                 with zipfile.ZipFile(p) as z:
                     x = z.read("word/document.xml").decode("utf-8", "ignore")
-                if "เดือนเต็ม" not in x and "เดือนย่อ" not in x:
+                if "เดือนเต็ม" not in x and "เดือนย่อ" not in x and "TIME" not in x:
                     old.append(info["file"])
             except Exception:
                 old.append(info["file"] + " (เปิดไม่ได้/ไม่มีไฟล์)")
