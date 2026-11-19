@@ -5,6 +5,7 @@ docx_engine.py
 ไม่ต้องพึ่ง Microsoft Word หรือ COM Automation - ทำงานได้ทั้งบน Windows/Mac/Linux
 """
 
+import math
 import re
 import shutil
 import unicodedata
@@ -14,6 +15,8 @@ from lxml import etree
 
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 NSMAP = {"w": W_NS}
+W = "{%s}" % W_NS
+W_T = W + "t"
 
 PLACEHOLDER_RE = re.compile(r"<<[^<>]+>>")
 
@@ -254,6 +257,156 @@ def _refresh_time_fields(xml_bytes: bytes) -> bytes:
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
+
+# ---------- จัดบล็อกลงนาม: ยศชิดซ้ายของ "(" / ชื่อ+ตำแหน่งกึ่งกลาง ----------
+_SIG_NAME = ("ชื่อผู้ลงนาม", "ชื่อผู้ลงนามย่อ")
+_SIG_RANK = ("ยศผู้ลงนาม", "ยศย่อ")
+_SIG_POS = ("ตำแหน่งผู้ลงนาม1", "ตำแหน่งผู้ลงนาม2", "ตำแหน่งย่อ1", "ตำแหน่งย่อ2", "ตำแหน่งเต็ม1", "ตำแหน่งเต็ม2")
+_SP_PT = 3.6   # ความกว้างช่องว่าง (pt) ที่ฟอนต์ 16pt โดยประมาณ
+_CH_PT = 5.4   # ความกว้างตัวอักษรไทยเฉลี่ย (pt) โดยประมาณ
+
+
+def _p_text(p):
+    return "".join(t.text or "" for t in p.iter(W_T))
+
+
+def _sig_key(p):
+    """คืน (key, spec) ถ้าย่อหน้านี้มีแต่ placeholder เดี่ยว ๆ (ไม่นับช่องว่าง/แท็บ)"""
+    t = _p_text(p).strip()
+    m = re.fullmatch(r"<<([^<>#]+)(?:#([^<>]*))?>>", t)
+    return (m.group(1), m.group(2)) if m else (None, None)
+
+
+def _set_single_run(p, text, jc, left_tw, right_tw):
+    """ล้างเนื้อหา/แท็บเดิมของย่อหน้า ใส่ข้อความเดียว จัดชิดด้วย indent จริง (ไม่ใช้ช่องว่างเล็งตำแหน่ง)"""
+    runs = [r for r in p if etree.QName(r).localname == "r"]
+    keep_rpr = None
+    for r in runs:
+        rp = r.find("w:rPr", NSMAP)
+        if rp is not None and keep_rpr is None and r.find("w:t", NSMAP) is not None:
+            keep_rpr = rp
+    for r in runs:
+        p.remove(r)
+    ppr = p.find("w:pPr", NSMAP)
+    if ppr is None:
+        ppr = etree.SubElement(p, W + "pPr")
+        p.insert(0, ppr)
+    for tag in ("tabs", "ind", "jc"):
+        for e in ppr.findall("w:" + tag, NSMAP):
+            ppr.remove(e)
+    # ลำดับใน pPr: ... tabs, ..., spacing, ind, ..., jc, ... ใส่ก่อน rPr เสมอ
+    anchor = ppr.find("w:rPr", NSMAP)
+    ind = etree.Element(W + "ind")
+    ind.set(W + "left", str(int(left_tw)))
+    ind.set(W + "right", str(int(right_tw)))
+    jce = etree.Element(W + "jc")
+    jce.set(W + "val", jc)
+    for e in (ind, jce):
+        if anchor is not None:
+            anchor.addprevious(e)
+        else:
+            ppr.append(e)
+    r = etree.SubElement(p, W + "r")
+    if keep_rpr is not None:
+        import copy
+        r.append(copy.deepcopy(keep_rpr))
+    t = etree.SubElement(r, W + "t")
+    t.text = text
+    t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+
+
+def _layout_signature(xml_bytes: bytes, mapping: dict) -> bytes:
+    if b"&lt;&lt;" not in xml_bytes:
+        return xml_bytes
+    root = etree.fromstring(xml_bytes, etree.XMLParser(remove_blank_text=False))
+    body = root.find("w:body", NSMAP)
+    sect = body.find("w:sectPr", NSMAP) if body is not None else None
+    if sect is None:
+        return xml_bytes
+    pg = sect.find("w:pgSz", NSMAP)
+    mg = sect.find("w:pgMar", NSMAP)
+    text_w = (int(pg.get(W + "w")) - int(mg.get(W + "left")) - int(mg.get(W + "right"))) / 20.0  # pt
+    changed = False
+    for name_p in list(body.iter(W + "p")):
+        k, spec = _sig_key(name_p)
+        if k not in _SIG_NAME or name_p.getparent() is not body:
+            continue
+        name_val = mapping.get(k, "")
+        if not name_val:
+            continue
+        sibs = list(body)
+        i = sibs.index(name_p)
+        rank_p = None
+        for j in range(i - 1, max(-1, i - 4), -1):  # ย่อหน้าก่อนหน้า (ข้ามบรรทัดว่าง)
+            kk, _ = _sig_key(sibs[j]) if etree.QName(sibs[j]).localname == "p" else (None, None)
+            if kk in _SIG_RANK:
+                rank_p = sibs[j]
+                break
+            if etree.QName(sibs[j]).localname == "p" and _p_text(sibs[j]).strip():
+                break
+        pos_ps = []
+        for j in range(i + 1, min(len(sibs), i + 4)):
+            if etree.QName(sibs[j]).localname != "p":
+                break
+            kk, _ = _sig_key(sibs[j])
+            if kk in _SIG_POS:
+                pos_ps.append((sibs[j], kk))
+            elif _p_text(sibs[j]).strip():
+                break
+        if not pos_ps:
+            continue  # ไม่ใช่บล็อกลงนามเต็มชุด -> ไม่แตะ
+        # ตำแหน่งกึ่งกลางเดิม ประเมินจากแท็บ+ช่องว่างหน้าชื่อ + ค่า lead ใน spec
+        ppr = name_p.find("w:pPr", NSMAP)
+        base_pt = 0.0
+        tab_stops = [int(t.get(W + "pos")) for t in (ppr.findall("w:tabs/w:tab", NSMAP) if ppr is not None else []) if t.get(W + "val") in (None, "left")]
+        ind0 = ppr.find("w:ind", NSMAP) if ppr is not None else None
+        if ind0 is not None and ind0.get(W + "left"):
+            base_pt += int(ind0.get(W + "left")) / 20.0
+        n_tabs, lit = 0, 0
+        for r in name_p.findall("w:r", NSMAP):
+            t = r.find("w:t", NSMAP)
+            if t is not None and "<<" in (t.text or ""):
+                kids = list(r)
+                n_tabs += sum(1 for c in kids[:kids.index(t)] if etree.QName(c).localname == "tab")
+                break
+            if r.find("w:tab", NSMAP) is not None:
+                n_tabs += 1
+            if t is not None and t.text and not t.text.strip():
+                lit += len(t.text)
+        for n in range(n_tabs):
+            base_pt = (tab_stops[n] / 20.0) if n < len(tab_stops) else (math.floor(base_pt / 36.0) + 1) * 36.0
+        lead, w0 = 0, 0
+        if spec:
+            try:
+                lead, w0 = (int(x) for x in spec.split(","))
+            except ValueError:
+                pass
+        center = base_pt + (lit + lead + w0 * 1.5 / 2) * _SP_PT
+        for t in (ppr.findall("w:tabs/w:tab", NSMAP) if ppr is not None else []):
+            if t.get(W + "val") == "center" and n_tabs:
+                center = int(t.get(W + "pos")) / 20.0   # แท็บกึ่งกลางเดิมของต้นฉบับ
+                break
+        if not (20 < center < text_w - 20):
+            continue
+        half = min(center, text_w - center, 160.0)
+        left_tw = (center - half) * 20
+        right_tw = (text_w - center - half) * 20
+        _set_single_run(name_p, name_val, "center", left_tw, right_tw)
+        for pp, kk in pos_ps:
+            v = mapping.get(kk, "")
+            _set_single_run(pp, v, "center", left_tw, right_tw)
+        if rank_p is not None:
+            rk, _ = _sig_key(rank_p)
+            v = mapping.get(rk, "")
+            name_w = text_width(name_val) * _CH_PT
+            edge = center - name_w / 2          # ตำแหน่งวงเล็บเปิด (pt จากขอบซ้าย)
+            _set_single_run(rank_p, v, "right", 0, max(0, (text_w - edge) * 20))
+        changed = True
+    if not changed:
+        return xml_bytes
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
 def fill_docx(template_path: str, output_path: str, mapping: dict) -> None:
     """
     เปิดไฟล์ template_path (.docx) แทนที่ <<key>> ทุกจุดด้วยค่าจาก mapping (dict: key -> str)
@@ -271,6 +424,8 @@ def fill_docx(template_path: str, output_path: str, mapping: dict) -> None:
         replacements = {}
         for name in targets:
             xml_bytes = zin.read(name)
+            if name == "word/document.xml":
+                xml_bytes = _layout_signature(xml_bytes, mapping)
             new_xml = _refresh_time_fields(_replace_in_xml_bytes(xml_bytes, mapping))
             replacements[name] = new_xml
 

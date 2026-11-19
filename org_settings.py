@@ -185,6 +185,8 @@ def org_mapping(values: dict, now: datetime | None = None) -> dict:
         "ชื่อผู้ลงนาม": f"( {v['sg_name']} )" if v["sg_name"] else "",
         "ตำแหน่งผู้ลงนาม1": v["sg_pos1"],
         "ตำแหน่งผู้ลงนาม2": v["sg_pos2"],
+        "ตำแหน่งเต็ม1": v["sg_pos1"],
+        "ตำแหน่งเต็ม2": v["sg_pos2"],
         "โทรติดต่อ": v["sg_tel"],
         "อีเมล": v["sg_mail"],
         "ยศย่อ": v["ss_rank"],

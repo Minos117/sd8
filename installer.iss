@@ -1,5 +1,5 @@
 #define MyAppName "ZAIA SD8 SYSTEM"
-#define MyAppVersion "0.9.9"
+#define MyAppVersion "0.9.10"
 #define MyAppPublisher "หน่วยสัสดีอำเภอวานรนิวาส"
 #define MyAppExeName "SD8System.exe"
 
