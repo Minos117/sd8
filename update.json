@@ -1,10 +1,10 @@
 {
     "setup_rev":  1,
-    "version":  "0.9.4",
+    "version":  "0.9.5",
     "channel":  "beta",
     "file":  "SD8System_Setup.exe",
     "url":  "https://raw.githubusercontent.com/Minos117/sd8/main/installer/SD8System_Setup.exe",
-    "sha256":  "d5bb6e2d99c7c6251e5190fd202dde19e6abfb4ce886b426c94ec3b05496c917",
-    "size":  48514453,
+    "sha256":  "836d9000796721288c61267759f9608bf229ee83c3ccca0cdd62daf423ab9a71",
+    "size":  48512279,
     "released":  "2026-11-19"
 }
