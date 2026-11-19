@@ -111,7 +111,7 @@ def _load_bundled_fonts():
 
 _load_bundled_fonts()
 
-APP_VER = "0.9.15"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
+APP_VER = "0.9.16"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
 TEMPLATE_DIR = BASE_DIR / "templates"
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -530,11 +530,6 @@ class App(ctk.CTk):
             font=ui_font(15, "bold"), command=lambda: self._generate(self.current_doc),
         )
         self.make_btn.pack(side="left", padx=(14, 8), pady=10)
-        ctk.CTkButton(
-            bar, text="สร้างทั้งหมด (6 ไฟล์)", height=46, corner_radius=0,
-            fg_color=COLOR_BTN_TERTIARY, hover_color="#2E2E66", text_color=COLOR_TEXT_LIGHT,
-            font=ui_font(14, "bold"), command=self._generate_all,
-        ).pack(side="left", padx=8, pady=10)
         ctk.CTkButton(
             bar, text="เปิดโฟลเดอร์ Export", height=46, corner_radius=0,
             fg_color=COLOR_BTN_SECONDARY, hover_color=COLOR_BTN_TERTIARY, text_color=COLOR_SILVER,
