@@ -111,7 +111,7 @@ def _load_bundled_fonts():
 
 _load_bundled_fonts()
 
-APP_VER = "0.9.7"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
+APP_VER = "0.9.8"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
 TEMPLATE_DIR = BASE_DIR / "templates"
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -177,15 +177,16 @@ def ui_font(size=16, weight="normal"):
 
 
 DOCS = {
+    "REQ8": {"file": "REQ8.docx", "label": "คำร้อง ขอ สด.8", "group": "ขอใบแทน สด.8"},
     "PK14": {"file": "PK14.docx", "label": "ป.ค.14", "group": "ขอใบแทน สด.8"},
     "SD8": {"file": "SD8.docx", "label": "ปะหน้า (สด.8)", "group": "ขอใบแทน สด.8"},
+    "REQ43": {"file": "REQ43.docx", "label": "คำร้อง ขอ สด.43", "group": "ขอใบแทน สด.43"},
+    "NEWRT": {"file": "NEWRT.docx", "label": "บันทึกข้อความ สด.43", "group": "ขอใบแทน สด.43"},
     "CFSD": {"file": "CFSD.docx", "label": "รับรองพลทหาร", "group": "หนังสือรับรอง"},
     "CFRD": {"file": "CFRD.docx", "label": "รับรอง รด. ปี 3", "group": "หนังสือรับรอง"},
     "CFRT": {"file": "CFRT.docx", "label": "รับรองผลตรวจเลือก", "group": "หนังสือรับรอง"},
-    "NEWRT": {"file": "NEWRT.docx", "label": "ขอใบแทน สด.43", "group": "ขอใบแทน สด.43"},
-    "REQ": {"file": "REQ.docx", "label": "คำร้อง (สด.9 / สด.43)", "group": "คำร้อง"},
 }
-DOC_GROUPS = ["ขอใบแทน สด.8", "หนังสือรับรอง", "ขอใบแทน สด.43", "คำร้อง"]
+DOC_GROUPS = ["ขอใบแทน สด.8", "ขอใบแทน สด.43", "หนังสือรับรอง"]
 
 
 def open_path(path: Path):
@@ -306,7 +307,8 @@ DOC_FORMS = {
     "CFRD": [_PERSON_NAME, _BIRTHDATE, _ADDR, _PARENTS, _RELEASE],
     "CFRT": [_PERSON_NAME, _BIRTHDATE, _ADDR, _PARENTS, _SD43],
     "NEWRT": [_PERSON_NAME_YEAR, _ADDR, _PARENTS, _SD43],
-    "REQ": [_PERSON_NAME_YEAR, _ADDR, _PARENTS],
+    "REQ8": [_PERSON_NAME_YEAR, _ADDR, _PARENTS],
+    "REQ43": [_PERSON_NAME_YEAR, _ADDR, _PARENTS],
 }
 
 

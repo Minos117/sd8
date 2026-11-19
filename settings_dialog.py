@@ -164,13 +164,13 @@ def thai_id_valid(digits: str) -> bool:
 
 
 def _fmt_id(d: str) -> str:
-    cuts = (1, 5, 10, 12)
-    out, last = "", 0
-    for c in cuts:
+    """ขีดคั่นแทรกเฉพาะเมื่อมีเลขตัวถัดไปแล้ว (ไม่มีขีดค้างท้าย): 1-2345-67890-12-3"""
+    parts, last = [], 0
+    for c in (1, 5, 10, 12, 13):
         if len(d) > last:
-            out += d[last:c] + "-"
+            parts.append(d[last:c])
         last = c
-    return (out + d[last:]) if len(d) > last else out.rstrip("-")
+    return "-".join(parts)
 
 
 class IdPromptDialog(ctk.CTkToplevel):
@@ -247,6 +247,7 @@ class IdPromptDialog(ctk.CTkToplevel):
             self._busy = False
             try:
                 self.entry.icursor("end")
+                self.after_idle(lambda: self.entry.icursor("end"))
             except Exception:
                 pass
         if len(d) < 13:
