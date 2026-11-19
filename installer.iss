@@ -1,5 +1,5 @@
-﻿#define MyAppName "ระบบขอ สด.8 ใหม่"
-#define MyAppVersion "0.9.8"
+#define MyAppName "ZAIA SD8 SYSTEM"
+#define MyAppVersion "0.9.9"
 #define MyAppPublisher "หน่วยสัสดีอำเภอวานรนิวาส"
 #define MyAppExeName "SD8System.exe"
 

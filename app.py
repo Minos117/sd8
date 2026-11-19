@@ -111,7 +111,7 @@ def _load_bundled_fonts():
 
 _load_bundled_fonts()
 
-APP_VER = "0.9.8"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
+APP_VER = "0.9.9"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
 TEMPLATE_DIR = BASE_DIR / "templates"
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -319,7 +319,7 @@ class App(ctk.CTk):
         global UI_FONT_FAMILY
         UI_FONT_FAMILY = _detect_font(self)
 
-        self.title(f"ระบบขอ สด.8 ใหม่ / ป.ค.14 / หนังสือรับรอง  [Beta {APP_VER}]")
+        self.title(f"ZAIA SD8 SYSTEM — ระบบจัดทำเอกสารสัสดี  [Beta {APP_VER}]")
         self.geometry("1420x860")
         self.minsize(900, 560)
         self.configure(fg_color=COLOR_BG)
@@ -389,7 +389,7 @@ class App(ctk.CTk):
             font=ui_font(13, "bold"), text_color=COLOR_GOLD, anchor="w",
         ).pack(anchor="w")
         ctk.CTkLabel(
-            title_box, text="  ระบบจัดทำเอกสาร สด.8 / ป.ค.14 / หนังสือรับรอง",
+            title_box, text="  ZAIA SD8 SYSTEM — ระบบจัดทำเอกสารสัสดี",
             font=ui_font(25, "bold"), text_color=COLOR_TEXT_LIGHT, anchor="w",
         ).pack(anchor="w", pady=(2, 0))
         ctk.CTkLabel(
