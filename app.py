@@ -14,6 +14,7 @@ from pathlib import Path
 from tkinter import messagebox
 import threading
 import update_check
+import linkage_check
 import tkinter.font as tkfont
 from PIL import Image
 
@@ -722,12 +723,25 @@ class App(ctk.CTk):
             self._ask_and_fetch()
             return
 
+        self._ensure_linkage()
         # เปิดเบราว์เซอร์ (ครั้งแรกอาจต้องโหลด Chromium 1-3 นาที) แล้วรอจนพร้อมโดยไม่ค้างหน้าจอ
         self._web = WebSession(log=lambda m: self.after(0, lambda: self.status_var.set(m)))
         self._web.open()
         self.web_btn.configure(state="disabled")
         self.status_var.set("กำลังเตรียมเบราว์เซอร์ (ครั้งแรกอาจนาน 1-3 นาที ต้องต่อเน็ต) กรุณารอ...")
         self._wait_web_ready()
+
+    def _ensure_linkage(self):
+        """เช็กว่า Linkage2Client เปิดอยู่ไหม ถ้าไม่เปิดก็เปิดให้ (ไม่ขวางการดึงข้อมูลถ้าทำไม่ได้)"""
+        st, msg = linkage_check.ensure_running()
+        if st == "notfound":
+            from tkinter import filedialog
+            if messagebox.askyesno("Linkage2Client", msg + "\n\nเลือกไฟล์ .exe ของโปรแกรมเองตอนนี้ (จำไว้ใช้ครั้งต่อไป)?"):
+                p = filedialog.askopenfilename(title="เลือก Linkage2Client .exe", filetypes=[("โปรแกรม", "*.exe")])
+                if p:
+                    linkage_check.save_path(p)
+                    st, msg = linkage_check.ensure_running()
+        self.status_var.set(f"Linkage2Client: {msg}")
 
     def _wait_web_ready(self):
         s = self._web
