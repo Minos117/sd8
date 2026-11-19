@@ -388,7 +388,7 @@ def _layout_signature(xml_bytes: bytes, mapping: dict) -> bytes:
                 break
         if not (20 < center < text_w - 20):
             continue
-        half = min(center, text_w - center, 160.0)
+        half = min(center, text_w - center, 200.0)
         left_tw = (center - half) * 20
         right_tw = (text_w - center - half) * 20
         _set_single_run(name_p, name_val, "center", left_tw, right_tw)
