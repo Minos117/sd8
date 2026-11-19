@@ -111,7 +111,7 @@ def _load_bundled_fonts():
 
 _load_bundled_fonts()
 
-APP_VER = "0.9.5"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
+APP_VER = "0.9.6"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
 TEMPLATE_DIR = BASE_DIR / "templates"
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -177,13 +177,14 @@ def ui_font(size=16, weight="normal"):
 
 
 DOCS = {
-    "PK14": {"file": "PK14.docx", "label": "ป.ค.14", "group": "หลัก"},
-    "SD8": {"file": "SD8.docx", "label": "ปะหน้า (สด.8)", "group": "หลัก"},
-    "CFSD": {"file": "CFSD.docx", "label": "รับรองพลทหาร", "group": "หลัก"},
-    "CFRD": {"file": "CFRD.docx", "label": "รับรอง รด. ปี 3", "group": "หลัก"},
-    "CFRT": {"file": "CFRT.docx", "label": "รับรองผลตรวจเลือก", "group": "สด.43"},
-    "NEWRT": {"file": "NEWRT.docx", "label": "ขอใบแทน สด.43", "group": "สด.43"},
+    "PK14": {"file": "PK14.docx", "label": "ป.ค.14", "group": "ขอใบแทน สด.8"},
+    "SD8": {"file": "SD8.docx", "label": "ปะหน้า (สด.8)", "group": "ขอใบแทน สด.8"},
+    "CFSD": {"file": "CFSD.docx", "label": "รับรองพลทหาร", "group": "หนังสือรับรอง"},
+    "CFRD": {"file": "CFRD.docx", "label": "รับรอง รด. ปี 3", "group": "หนังสือรับรอง"},
+    "CFRT": {"file": "CFRT.docx", "label": "รับรองผลตรวจเลือก", "group": "หนังสือรับรอง"},
+    "NEWRT": {"file": "NEWRT.docx", "label": "ขอใบแทน สด.43", "group": "ขอใบแทน สด.43"},
 }
+DOC_GROUPS = ["ขอใบแทน สด.8", "หนังสือรับรอง", "ขอใบแทน สด.43"]
 
 
 def open_path(path: Path):
@@ -467,7 +468,8 @@ class App(ctk.CTk):
         ctk.CTkFrame(panel, height=1, fg_color=COLOR_BORDER).pack(fill="x", padx=14, pady=(2, 10))
 
         self.doc_buttons = {}
-        for group, title in (("หลัก", "เอกสารหลัก"), ("สด.43", "เอกสาร สด.43")):
+        for group in DOC_GROUPS:
+            title = group
             ctk.CTkLabel(panel, text=title, font=ui_font(13, "bold"),
                          text_color=COLOR_TEXT_MUTED, anchor="w").pack(anchor="w", padx=16, pady=(4, 4))
             for key, info in DOCS.items():

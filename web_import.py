@@ -8,6 +8,7 @@ import os
 import queue
 import re
 import threading
+from pathlib import Path
 
 URL = "https://recruit4.tdc.mi.th/app/check-person-info"
 
@@ -271,34 +272,55 @@ class WebSession:
     def close(self):
         self._cmd.put(("close", None))
 
+    def _launch(self, p):
+        """เปิดเบราว์เซอร์ตัวจริงของเครื่องก่อน (Edge -> Chrome) แล้วค่อยใช้ Chromium ของ Playwright
+        ใช้โปรไฟล์ถาวรของโปรแกรม (จำสิทธิ์/ล็อกอิน) คืน (context, page)"""
+        prof = Path(os.environ.get("LOCALAPPDATA") or str(Path.home())) / "SD8System" / "browser_profile"
+        prof.mkdir(parents=True, exist_ok=True)
+        # หน้า Recruit เรียก Linkage2Client ที่ 127.0.0.1 -> ปิดตัวถามสิทธิ์ "เข้าถึงแอปและบริการอื่นๆ ในอุปกรณ์นี้" ล่วงหน้า
+        args = ["--disable-features=LocalNetworkAccessChecks,PrivateNetworkAccessPermissionPrompt,"
+                "BlockInsecurePrivateNetworkRequests"]
+        last = None
+        for channel in ("msedge", "chrome", None):
+            try:
+                if channel is None:
+                    ensure_chromium_installed(self.log)
+                kw = {"channel": channel} if channel else {}
+                ctx = p.chromium.launch_persistent_context(
+                    str(prof), headless=False, args=args, no_viewport=True, **kw)
+                dlog(f"browser: {channel or 'playwright-chromium'}")
+                break
+            except Exception as e:
+                last = e
+                dlog(f"browser {channel}: ไม่ได้ ({str(e)[:120]})")
+        else:
+            raise RuntimeError(f"เปิดเบราว์เซอร์ไม่ได้: {last}")
+        for perm in ("local-network-access",):
+            try:
+                ctx.grant_permissions([perm], origin="https://recruit4.tdc.mi.th")
+            except Exception:
+                pass
+        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        return ctx, page
+
     def _run(self):
         try:
             from playwright.sync_api import sync_playwright
-            ensure_chromium_installed(self.log)
             with sync_playwright() as p:
-                # หน้า Recruit เรียก Linkage2Client ที่ 127.0.0.1 -> Chrome ถามสิทธิ์ "เข้าถึงแอปและบริการอื่นๆ ในอุปกรณ์นี้"
-                # ปิดตัวถามนี้ไว้ล่วงหน้า (ไม่ได้เปิดช่องโหว่ให้เว็บอื่น เพราะเบราว์เซอร์ตัวนี้ใช้เข้า Recruit อย่างเดียว)
-                browser = p.chromium.launch(headless=False, args=[
-                    "--disable-features=LocalNetworkAccessChecks,PrivateNetworkAccessPermissionPrompt,"
-                    "BlockInsecurePrivateNetworkRequests"])
-                ctx = browser.new_context()
-                for perm in ("local-network-access", "local-network", "loopback-network"):
-                    try:
-                        ctx.grant_permissions([perm], origin="https://recruit4.tdc.mi.th")
-                        dlog(f"perm granted: {perm}")
-                    except Exception:
-                        pass
-                page = ctx.new_page()
+                ctx, page = self._launch(p)
                 page.goto(URL)
                 dlog("run: เปิดเบราว์เซอร์สำเร็จ")
                 self.ready.set()
-                self.log("เปิดเว็บแล้ว — กำลังกดเข้าสู่ระบบด้วย Digital ID ให้ (ถ้าต้องยืนยันบนมือถือ ให้ยืนยัน)")
+                self.log("เปิดเว็บแล้ว — กำลังเข้าสู่ระบบผ่าน Linkage2Client ให้")
                 self._auto_login(page)
-                while browser.is_connected():
+                while not page.is_closed():
                     try:
                         cmd, arg = self._cmd.get(timeout=0.3)
                     except queue.Empty:
-                        page.wait_for_timeout(100)
+                        try:
+                            page.wait_for_timeout(100)
+                        except Exception:
+                            break
                         continue
                     if cmd == "close":
                         break
@@ -308,7 +330,7 @@ class WebSession:
                         dlog(f"ERROR fetch: {e}")
                         self._res.put(("err", str(e)))
                 try:
-                    browser.close()
+                    ctx.close()
                 except Exception:
                     pass
         except Exception as e:
@@ -381,6 +403,7 @@ class WebSession:
         try:
             with _ur.urlopen(self._linkage_base() + "/status", timeout=3) as r:
                 d = _json.loads(r.read().decode("utf-8", "ignore"))
+            dlog(f"linkage status body: {str(d)[:300]}")
             return bool({str(k).lower(): v for k, v in d.items()}.get("isauthenticated"))
         except Exception as e:
             dlog(f"linkage status: ต่อไม่ได้ ({e})")
@@ -453,6 +476,31 @@ class WebSession:
         return True
 
     @staticmethod
+    def _type_id(page, box, cid):
+        """กรอกเลขบัตรทีละตัวโดยเลื่อนเคอร์เซอร์ไปท้ายช่องทุกครั้ง (ช่องมีตัวจัดรูปแบบที่ทำให้ตัวที่ 2 กระโดดไปท้ายสุด)
+        แล้วตรวจว่าเลขในช่องตรงจริง ไม่ตรงจะลองช้าลง และสุดท้ายตั้งค่าตรงๆ ผ่าน JS"""
+        def digits():
+            return "".join(c for c in box.input_value() if c.isdigit())
+        for delay in (40, 130):
+            box.click()
+            box.press("Control+A")
+            box.press("Backspace")
+            for d in cid:
+                box.press("End")
+                page.keyboard.type(d, delay=delay)
+            page.wait_for_timeout(200)
+            if digits() == cid:
+                return
+            dlog(f"typeid: ได้ {digits()} ต้องเป็น {cid} (delay={delay})")
+        box.evaluate(
+            "(el,v)=>{const s=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;"
+            "s.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}));"
+            "el.dispatchEvent(new Event('change',{bubbles:true}));}", cid)
+        page.wait_for_timeout(200)
+        if digits() != cid:
+            raise RuntimeError(f"กรอกเลขบัตรในช่องค้นหาไม่ตรง (ในช่องเป็น {digits()})")
+
+    @staticmethod
     def _fetch(page, citizen_id):
         import re as _re
         dlog("fetch: start")
@@ -461,8 +509,7 @@ class WebSession:
             page.goto(URL)
         box = page.locator('input[placeholder="เลขประจำตัวประชาชน 13 หลัก"]')
         box.wait_for(state="visible", timeout=10000)
-        box.fill("")
-        box.fill(citizen_id)
+        WebSession._type_id(page, box, citizen_id)
         # ปุ่ม 'ค้นหา' เป๊ะ ๆ (ไม่ชนกับแท็บ 'ค้นหาด้วย...') ใช้ข้อความในปุ่ม ไม่พึ่งชื่อ accessible ที่อาจมีไอคอนปน
         btn = page.locator("button", has_text=_re.compile(r"ค้นหา\s*$"))
         try:
