@@ -3,7 +3,7 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = []
 binaries = []
-hiddenimports = ['openpyxl', 'lxml', 'docx', 'docx_engine', 'utils', 'storage', 'web_import', 'org_settings', 'settings_dialog', 'update_check', 'linkage_check', 'theme_defs']
+hiddenimports = ['openpyxl', 'lxml', 'docx', 'docx_engine', 'utils', 'storage', 'web_import', 'org_settings', 'settings_dialog', 'update_check', 'linkage_check', 'theme_defs', 'PIL.ImageTk']
 tmp_ret = collect_all('customtkinter')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('playwright')

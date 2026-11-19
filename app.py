@@ -17,7 +17,8 @@ import update_check
 import theme_defs
 import linkage_check
 import tkinter.font as tkfont
-from PIL import Image
+from PIL import Image, ImageTk
+import tkinter as tk
 
 # ---------------------------------------------------------------
 # แก้ปัญหาตัวอักษรเบลอ/หยักบน Windows (DPI awareness)
@@ -112,7 +113,7 @@ def _load_bundled_fonts():
 
 _load_bundled_fonts()
 
-APP_VER = "0.9.17"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
+APP_VER = "0.9.18"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
 TEMPLATE_DIR = BASE_DIR / "templates"
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -169,6 +170,8 @@ COLOR_ON_ACCENT = "#0B0B1A"
 COLOR_BTN3_HOVER = "#2E2E66"
 COLOR_DANGER_BG, COLOR_DANGER_TEXT, COLOR_DANGER_HOVER = "#4A1020", "#FF4D6D", "#6A1830"
 THEME_PIXEL = True
+CORNER = 0
+THEME_X: dict = {}
 THEME_LAYOUT = "side"
 THEME_FONTS: list = []
 THEME_DIRS = [BASE_DIR, Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "SD8System"]
@@ -176,13 +179,16 @@ THEME_DIRS = [BASE_DIR, Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "S
 
 def apply_theme_globals(name: str):
     """เขียนสีของธีมลงตัวแปร COLOR_* (ใช้ตอนสร้างวิดเจ็ตใหม่)"""
-    global THEME_PIXEL, THEME_LAYOUT, THEME_FONTS
+    global THEME_PIXEL, THEME_LAYOUT, THEME_FONTS, CORNER
     t = theme_defs.THEMES.get(name) or theme_defs.THEMES[theme_defs.DEFAULT_THEME]
     g = globals()
     for k, v in t.items():
         if k.startswith("COLOR_"):
             g[k] = v
     THEME_PIXEL, THEME_LAYOUT, THEME_FONTS = t["pixel"], t["layout"], t["fonts"]
+    CORNER = t.get("corner", 0)
+    THEME_X.clear()
+    THEME_X.update({k: t[k] for k in ("hdr_grad", "hdr_text", "hdr_sub", "group_grad", "group_text", "btn_border", "entry_bw") if k in t})
     ctk.set_appearance_mode("light" if t["mode"] == "light" else "dark")
 
 
@@ -259,16 +265,16 @@ class LabelChip(ctk.CTkLabel):
         super().__init__(
             parent, text=text, width=width, height=34,
             fg_color=COLOR_LABEL_CHIP, text_color=COLOR_LABEL_TEXT,
-            corner_radius=0, font=ui_font(16, "bold"),
+            corner_radius=CORNER, font=ui_font(16, "bold"),
             **kwargs,
         )
 
 
 def make_entry(parent, width=140, justify="left", var=None):
     return ctk.CTkEntry(
-        parent, width=width, height=34, corner_radius=0, textvariable=var,
+        parent, width=width, height=34, corner_radius=CORNER, textvariable=var,
         fg_color=COLOR_ENTRY_BG, text_color=COLOR_ENTRY_TEXT,
-        border_width=2, border_color=COLOR_ENTRY_BORDER,
+        border_width=THEME_X.get("entry_bw", 2), border_color=COLOR_ENTRY_BORDER,
         font=ui_font(16),
         justify=justify,
     )
@@ -392,6 +398,7 @@ class App(ctk.CTk):
         self._schedule_autosave()
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.after(60, self._maximize)
 
         # ตั้งค่าหน่วยงาน: ถ้ายังไม่เคยตั้งค่า (หรือข้อมูลจำเป็นไม่ครบ) เปิดหน้าตั้งค่าอัตโนมัติ
         self.org = org_settings.load()
@@ -405,9 +412,75 @@ class App(ctk.CTk):
     # ------------------------------------------------------------
     # UI CONSTRUCTION
     # ------------------------------------------------------------
+    def _grad_image(self, w, h, c1, c2):
+        a = tuple(int(c1[i:i + 2], 16) for i in (1, 3, 5))
+        b = tuple(int(c2[i:i + 2], 16) for i in (1, 3, 5))
+        img = Image.new("RGB", (max(w, 2), max(h, 2)))
+        px = img.load()
+        for x in range(img.width):
+            f = x / (img.width - 1)
+            col = tuple(int(a[i] + (b[i] - a[i]) * f) for i in range(3))
+            for y in range(img.height):
+                px[x, y] = col
+        return img
+
+    def _build_header_gradient(self):
+        """แถบหัวไล่สี (XP / PSP / Neon): วาดบน Canvas ให้สีไล่ต่อเนื่องทั้งแถบ"""
+        c1, c2 = THEME_X["hdr_grad"]
+        tcol, scol = THEME_X.get("hdr_text", "#FFFFFF"), THEME_X.get("hdr_sub", "#DDDDDD")
+        try:
+            sc = float(ctk.ScalingTracker.get_window_scaling_factor(self))
+        except Exception:
+            sc = 1.0
+        H = int(112 * sc)
+        cv = tk.Canvas(self, height=H, highlightthickness=0, bd=0, bg=c1)
+        cv.pack(fill="x", padx=20, pady=(18, 10))
+        self.header = cv
+        logo = None
+        if LOGO_PATH.exists():
+            try:
+                li = Image.open(LOGO_PATH).convert("RGBA")
+                sz = int(88 * sc)
+                li = li.resize((sz, sz), Image.NEAREST if LOGO_PATH.name == "sd8_logo.png" else Image.LANCZOS)
+                logo = ImageTk.PhotoImage(li)
+            except Exception:
+                logo = None
+        btn = ctk.CTkButton(
+            cv, text="ตั้งค่า", width=120, height=42, fg_color=COLOR_BTN_SECONDARY,
+            hover_color=COLOR_BTN3_HOVER, text_color=COLOR_GOLD, corner_radius=CORNER,
+            font=ui_font(15, "bold"), command=self._open_hub)
+        f_small = tkfont.Font(family=UI_FONT_FAMILY, size=-int(14 * sc), weight="bold")
+        f_big = tkfont.Font(family=UI_FONT_FAMILY, size=-int(28 * sc), weight="bold")
+        f_sub = tkfont.Font(family=UI_FONT_FAMILY, size=-int(14 * sc))
+        self._hdr_refs = []
+
+        def draw(_e=None):
+            W = max(cv.winfo_width(), 400)
+            cv.delete("all")
+            gi = ImageTk.PhotoImage(self._grad_image(W, H, c1, c2))
+            self._hdr_refs = [gi, logo]
+            cv.create_image(0, 0, anchor="nw", image=gi)
+            cv.create_rectangle(0, 0, W - 1, H - 1, outline=COLOR_BORDER)
+            x = 20 * sc
+            if logo is not None:
+                cv.create_image(x, H / 2, anchor="w", image=logo)
+                x += 88 * sc + 18 * sc
+            cv.create_text(x, H * 0.24, anchor="w", text="ZAIA  |  จัดทำโดย ZAIA", fill=tcol, font=f_small)
+            cv.create_text(x + 1, H * 0.50 + 1, anchor="w", text="DOCUMENT CONTROL — ระบบจัดทำเอกสารงานสัสดี",
+                           fill="#00000055" if False else "#1B2F6B", font=f_big) if THEME_X.get("group_grad") else None
+            cv.create_text(x, H * 0.50, anchor="w", text="DOCUMENT CONTROL — ระบบจัดทำเอกสารงานสัสดี", fill=tcol, font=f_big)
+            cv.create_text(x, H * 0.78, anchor="w", text="เลือกเอกสารทางซ้าย กรอกฟอร์ม (หรือดึงจากเว็บ) แล้วกดสร้างด้านล่าง",
+                           fill=scol, font=f_sub)
+            cv.create_window(W - 18 * sc, H / 2, anchor="e", window=btn)
+
+        cv.bind("<Configure>", draw)
+        draw()
+
     def _build_header(self):
+        if "hdr_grad" in THEME_X:
+            return self._build_header_gradient()
         header = ctk.CTkFrame(
-            self, fg_color=COLOR_SURFACE, corner_radius=0,
+            self, fg_color=COLOR_SURFACE, corner_radius=CORNER,
             border_width=2, border_color=COLOR_BORDER,
         )
         header.pack(fill="x", padx=20, pady=(18, 10))
@@ -447,7 +520,7 @@ class App(ctk.CTk):
         ctk.CTkButton(
             right, text="ตั้งค่า", width=120, height=44,
             fg_color=COLOR_BTN_SECONDARY, hover_color=COLOR_BTN3_HOVER, text_color=COLOR_GOLD,
-            corner_radius=0, font=ui_font(15, "bold"),
+            corner_radius=CORNER, font=ui_font(15, "bold"),
             command=self._open_hub,
         ).pack()
 
@@ -455,6 +528,21 @@ class App(ctk.CTk):
     # โครงหน้าจอ: ซ้าย = เลือกเอกสาร / ขวา = ฟอร์มของเอกสารนั้น
     # ทุกช่องใช้ตัวแปรกลางชุดเดียว (self.vars) -> ค่าเหมือนกันใช้ร่วมทุกเอกสาร แก้ที่ไหนเปลี่ยนทุกที่
     # ------------------------------------------------------------
+    def _post_style(self):
+        bb = THEME_X.get("btn_border")
+        if not bb:
+            return
+
+        def walk(w):
+            for c in w.winfo_children():
+                if isinstance(c, ctk.CTkButton):
+                    try:
+                        c.configure(border_width=1, border_color=bb)
+                    except Exception:
+                        pass
+                walk(c)
+        walk(self)
+
     def _build_workspace(self):
         self.workspace = ctk.CTkFrame(self, fg_color="transparent")
         self.workspace.pack(fill="both", expand=True, padx=20, pady=(0, 14))
@@ -468,10 +556,21 @@ class App(ctk.CTk):
         self._build_sidebar()
         self._build_form_area()
         self._select_doc(getattr(self, "_start_doc", "PK14"))
+        self._post_style()
 
     # ---------- ธีม PSP: แถบหมวดแนวนอนด้านบน (XMB) ----------
+    def _maximize(self):
+        """เปิดแอปแบบขยายเต็มจอ (ขนาดเดิมไว้ใช้ตอนกดย่อกลับ)"""
+        try:
+            self.state("zoomed")
+        except Exception:
+            try:
+                self.attributes("-zoomed", True)
+            except Exception:
+                pass
+
     def _build_crossbar(self):
-        bar = ctk.CTkFrame(self.workspace, fg_color=COLOR_SURFACE, corner_radius=0,
+        bar = ctk.CTkFrame(self.workspace, fg_color=COLOR_SURFACE, corner_radius=CORNER,
                            border_width=2, border_color=COLOR_BORDER, height=64)
         bar.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 10))
         self.group_btns = {}
@@ -524,7 +623,7 @@ class App(ctk.CTk):
     def _build_sidebar(self):
         panel = ctk.CTkFrame(
             self.workspace, width=250, fg_color=COLOR_SURFACE,
-            corner_radius=0, border_width=2, border_color=COLOR_BORDER,
+            corner_radius=CORNER, border_width=2, border_color=COLOR_BORDER,
         )
         panel.grid(row=1, column=0, sticky="ns", padx=(0, 10))
         panel.grid_propagate(False)
@@ -538,7 +637,7 @@ class App(ctk.CTk):
         self.web_btn = ctk.CTkButton(
             panel, text="ดึงข้อมูลจากเว็บ TDC", height=44,
             fg_color=COLOR_BTN_SECONDARY, hover_color=COLOR_BTN_TERTIARY,
-            text_color=COLOR_GOLD, corner_radius=0, font=ui_font(14, "bold"),
+            text_color=COLOR_GOLD, corner_radius=CORNER, font=ui_font(14, "bold"),
             command=self._pull_from_web,
         )
         self.web_btn.pack(fill="x", padx=14, pady=(0, 8))
@@ -548,7 +647,7 @@ class App(ctk.CTk):
 
         self.doc_buttons = {}
         self.group_frames = {}
-        lst = ctk.CTkScrollableFrame(panel, fg_color="transparent", corner_radius=0,
+        lst = ctk.CTkScrollableFrame(panel, fg_color="transparent", corner_radius=CORNER,
                                      scrollbar_button_color=COLOR_BTN_TERTIARY,
                                      scrollbar_button_hover_color=COLOR_GOLD)
         lst.pack(fill="both", expand=True, padx=(0, 2), pady=(0, 6))
@@ -556,14 +655,22 @@ class App(ctk.CTk):
             fr = ctk.CTkFrame(lst, fg_color="transparent")
             fr.pack(fill="x")
             self.group_frames[group] = fr
-            if THEME_LAYOUT != "xmb":
+            if THEME_LAYOUT != "xmb" and "group_grad" in THEME_X:
+                gi = self._grad_image(460, 30, *THEME_X["group_grad"])
+                self._grp_imgs = getattr(self, "_grp_imgs", [])
+                ci = ctk.CTkImage(light_image=gi, dark_image=gi, size=(226, 30))
+                self._grp_imgs.append(ci)
+                ctk.CTkLabel(fr, text="  " + group, image=ci, compound="center", width=226, height=30,
+                             font=ui_font(14, "bold"), text_color=THEME_X.get("group_text", COLOR_GOLD),
+                             anchor="w").pack(padx=12, pady=(8, 4))
+            elif THEME_LAYOUT != "xmb":
                 ctk.CTkLabel(fr, text=group, font=ui_font(13, "bold"),
                              text_color=COLOR_TEXT_MUTED, anchor="w").pack(anchor="w", padx=16, pady=(4, 4))
             for key, info in DOCS.items():
                 if info["group"] != group:
                     continue
                 btn = ctk.CTkButton(
-                    fr, text=info["label"], height=46, corner_radius=0, anchor="w",
+                    fr, text=info["label"], height=46, corner_radius=CORNER, anchor="w",
                     fg_color=COLOR_BTN_TERTIARY, hover_color=COLOR_BTN3_HOVER,
                     text_color=COLOR_TEXT_LIGHT, font=ui_font(15, "bold"),
                     command=lambda k=key: self._select_doc(k),
@@ -574,11 +681,11 @@ class App(ctk.CTk):
 
     # ---------- ขวา: ฟอร์ม + ปุ่มสร้าง ----------
     def _build_form_area(self):
-        area = ctk.CTkFrame(self.workspace, fg_color=COLOR_CARD, corner_radius=0,
+        area = ctk.CTkFrame(self.workspace, fg_color=COLOR_CARD, corner_radius=CORNER,
                             border_width=2, border_color=COLOR_BORDER)
         area.grid(row=1, column=1, sticky="nsew")
 
-        head = ctk.CTkFrame(area, fg_color=COLOR_PANEL_HEADER, corner_radius=0)
+        head = ctk.CTkFrame(area, fg_color=COLOR_PANEL_HEADER, corner_radius=CORNER)
         head.pack(fill="x")
         self.form_title = ctk.CTkLabel(head, text="", font=ui_font(18, "bold"),
                                        text_color=COLOR_GOLD, anchor="w")
@@ -586,26 +693,26 @@ class App(ctk.CTk):
         ctk.CTkLabel(head, text="ค่าที่ซ้ำกันใช้ร่วมกันทุกเอกสาร แก้ที่ไหนเปลี่ยนทุกที่",
                      font=ui_font(12), text_color=COLOR_TEXT_MUTED).pack(side="right", padx=16)
 
-        bar = ctk.CTkFrame(area, fg_color=COLOR_SURFACE, corner_radius=0)
+        bar = ctk.CTkFrame(area, fg_color=COLOR_SURFACE, corner_radius=CORNER)
         bar.pack(side="bottom", fill="x")
         self.make_btn = ctk.CTkButton(
-            bar, text="สร้างเอกสารนี้", height=46, width=200, corner_radius=0,
+            bar, text="สร้างเอกสารนี้", height=46, width=200, corner_radius=CORNER,
             fg_color=COLOR_BTN_PRIMARY, hover_color=COLOR_GOLD_HOVER, text_color=COLOR_ON_ACCENT,
             font=ui_font(15, "bold"), command=lambda: self._generate(self.current_doc),
         )
         self.make_btn.pack(side="left", padx=(14, 8), pady=10)
         ctk.CTkButton(
-            bar, text="ล้างข้อมูลหน้านี้", height=46, corner_radius=0,
+            bar, text="ล้างข้อมูลหน้านี้", height=46, corner_radius=CORNER,
             fg_color=COLOR_DANGER_BG, hover_color=COLOR_DANGER_HOVER, text_color=COLOR_DANGER_TEXT,
             font=ui_font(14, "bold"), command=self._clear_page,
         ).pack(side="left", padx=8, pady=10)
         ctk.CTkButton(
-            bar, text="เปิดโฟลเดอร์ Export", height=46, corner_radius=0,
+            bar, text="เปิดโฟลเดอร์ Export", height=46, corner_radius=CORNER,
             fg_color=COLOR_BTN_SECONDARY, hover_color=COLOR_BTN_TERTIARY, text_color=COLOR_SILVER,
             font=ui_font(14, "bold"), command=lambda: open_path(OUTPUT_DIR),
         ).pack(side="right", padx=14, pady=10)
 
-        self.form_host = ctk.CTkFrame(area, fg_color="transparent", corner_radius=0)
+        self.form_host = ctk.CTkFrame(area, fg_color="transparent", corner_radius=CORNER)
         self.form_host.pack(fill="both", expand=True, padx=8, pady=8)
         self.pages = {}
         self.current_doc = None
@@ -655,7 +762,7 @@ class App(ctk.CTk):
                         LabelChip(row, "อายุ", width=60).pack(side="left", padx=(0, 4))
                         lbl = ctk.CTkLabel(
                             row, text="-", width=60, height=34, fg_color=COLOR_LABEL_CHIP,
-                            text_color=COLOR_LABEL_TEXT, corner_radius=0, font=ui_font(16, "bold"),
+                            text_color=COLOR_LABEL_TEXT, corner_radius=CORNER, font=ui_font(16, "bold"),
                         )
                         lbl.pack(side="left")
                         self.age_labels.append(lbl)
@@ -668,7 +775,7 @@ class App(ctk.CTk):
         return make_entry(parent, width=width, var=self.vars[key])
 
     def _build_status_bar(self):
-        bar = ctk.CTkFrame(self, fg_color=COLOR_PANEL_HEADER, height=34, corner_radius=0)
+        bar = ctk.CTkFrame(self, fg_color=COLOR_PANEL_HEADER, height=34, corner_radius=CORNER)
         bar.pack(fill="x", side="bottom")
         self.status_bar = bar
         ctk.CTkLabel(
@@ -1000,13 +1107,13 @@ class App(ctk.CTk):
         hub.minsize(640, 520)
         hub.configure(fg_color=COLOR_BG)
         hub.transient(self)
-        body = ctk.CTkScrollableFrame(hub, fg_color=COLOR_BG, corner_radius=0,
+        body = ctk.CTkScrollableFrame(hub, fg_color=COLOR_BG, corner_radius=CORNER,
                                       scrollbar_button_color=COLOR_BTN_TERTIARY,
                                       scrollbar_button_hover_color=COLOR_GOLD)
         body.pack(fill="both", expand=True, padx=14, pady=14)
 
         def section(title, hint=None):
-            box = ctk.CTkFrame(body, fg_color=COLOR_SURFACE, corner_radius=0,
+            box = ctk.CTkFrame(body, fg_color=COLOR_SURFACE, corner_radius=CORNER,
                                border_width=2, border_color=COLOR_BORDER)
             box.pack(fill="x", pady=(0, 14))
             ctk.CTkLabel(box, text=title, font=ui_font(18, "bold"), text_color=COLOR_GOLD,
@@ -1018,7 +1125,7 @@ class App(ctk.CTk):
 
         def btn(parent, text, cmd, primary=False):
             return ctk.CTkButton(
-                parent, text=text, height=40, corner_radius=0, font=ui_font(14, "bold"), command=cmd,
+                parent, text=text, height=40, corner_radius=CORNER, font=ui_font(14, "bold"), command=cmd,
                 fg_color=COLOR_BTN_PRIMARY if primary else COLOR_BTN_SECONDARY,
                 hover_color=COLOR_GOLD_HOVER if primary else COLOR_BTN3_HOVER,
                 text_color=COLOR_ON_ACCENT if primary else COLOR_GOLD)
@@ -1041,14 +1148,14 @@ class App(ctk.CTk):
         for i, name in enumerate(theme_defs.ORDER):
             t = theme_defs.THEMES[name]
             on = name == self.theme_name
-            card = ctk.CTkFrame(grid, fg_color=COLOR_BTN_TERTIARY, corner_radius=0,
+            card = ctk.CTkFrame(grid, fg_color=COLOR_BTN_TERTIARY, corner_radius=CORNER,
                                 border_width=3 if on else 1,
                                 border_color=COLOR_GOLD if on else COLOR_BORDER)
             card.grid(row=i // 2, column=i % 2, sticky="ew", padx=4, pady=4)
             sw = ctk.CTkFrame(card, fg_color="transparent")
             sw.pack(anchor="w", padx=10, pady=(10, 4))
             for col in (t["COLOR_BG"], t["COLOR_SURFACE"], t["COLOR_GOLD"], t["COLOR_TEXT_LIGHT"]):
-                ctk.CTkFrame(sw, width=34, height=22, corner_radius=0, fg_color=col,
+                ctk.CTkFrame(sw, width=34, height=22, corner_radius=CORNER, fg_color=col,
                              border_width=1, border_color=COLOR_BORDER).pack(side="left", padx=(0, 3))
             extra = "  — แถบหมวดแนวนอนแบบ XMB" if t["layout"] == "xmb" else ""
             lbl = ctk.CTkLabel(card, text=("✓ " if on else "") + t["label"] + extra,

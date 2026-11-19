@@ -59,6 +59,15 @@ THEMES = {
                 "#0D0D0D", "#B8922C", "#F5EFD8", "#A8997A", "#D4AF37", "#F0D060", "#0D0D0D",
                 "#242424", "#2F2A18", "#44391C", "#CDBE95"),
 }
+for _k, _c in {"retro": 0, "terminal": 0, "winxp": 3, "psp": 10, "neon": 4, "ocean": 8,
+               "sakura": 12, "sunset": 8, "forest": 8, "royal": 4}.items():
+    THEMES[_k]["corner"] = _c   # ความมนของมุม (px)
+# ความหรู/สมจริงเพิ่ม: แถบหัวไล่สี, หัวข้อกลุ่มแบบ Explorer, ขอบปุ่ม, ความหนาขอบช่องกรอก
+THEMES["winxp"].update(
+    hdr_grad=("#0A3FC8", "#3F8EF5"), hdr_text="#FFFFFF", hdr_sub="#DCE8FF",
+    group_grad=("#FFFFFF", "#C6D3F7"), group_text="#215DC6", btn_border="#003C74", entry_bw=1)
+THEMES["psp"].update(hdr_grad=("#050F24", "#1F5AA8"), hdr_text="#FFFFFF", hdr_sub="#B5D4FF")
+THEMES["neon"].update(hdr_grad=("#14002A", "#5A0B8C"), hdr_text="#00F0FF", hdr_sub="#F5E9FF")
 DEFAULT_THEME = "retro"
 ORDER = ["retro", "winxp", "psp", "neon", "terminal", "ocean", "sakura", "sunset", "forest", "royal"]
 
