@@ -111,7 +111,7 @@ def _load_bundled_fonts():
 
 _load_bundled_fonts()
 
-APP_VER = "0.9.1"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
+APP_VER = "0.9.2"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
 TEMPLATE_DIR = BASE_DIR / "templates"
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -725,7 +725,8 @@ class App(ctk.CTk):
 
         self._ensure_linkage()
         # เปิดเบราว์เซอร์ (ครั้งแรกอาจต้องโหลด Chromium 1-3 นาที) แล้วรอจนพร้อมโดยไม่ค้างหน้าจอ
-        self._web = WebSession(log=lambda m: self.after(0, lambda: self.status_var.set(m)))
+        self._web = WebSession(log=lambda m: self.after(0, lambda: self.status_var.set(m)),
+                              unit_hint=org_settings.load().get("amphoe", ""))
         self._web.open()
         self.web_btn.configure(state="disabled")
         self.status_var.set("กำลังเตรียมเบราว์เซอร์ (ครั้งแรกอาจนาน 1-3 นาที ต้องต่อเน็ต) กรุณารอ...")

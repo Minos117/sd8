@@ -233,8 +233,9 @@ class WebSession:
     """เปิดเบราว์เซอร์ค้างไว้ 1 ตัว ใช้ซ้ำได้หลายคน
     ใช้: open() -> (ผู้ใช้ Login เอง) -> fetch(เลขบัตร) -> (values, notes) หรือ raise"""
 
-    def __init__(self, log=print):
+    def __init__(self, log=print, unit_hint=""):
         self.log = log
+        self.unit_hint = (unit_hint or "").strip()  # ชื่ออำเภอ ใช้เลือกหน่วยในหน้าเลือกหน่วยงาน
         self._cmd = queue.Queue()
         self._res = queue.Queue()
         self._thread = None
@@ -278,7 +279,8 @@ class WebSession:
                 page.goto(URL)
                 dlog("run: เปิดเบราว์เซอร์สำเร็จ")
                 self.ready.set()
-                self.log("เปิดเว็บแล้ว — Login ให้เสร็จ แล้วกลับมากด 'ดึงจากเว็บ' อีกครั้ง")
+                self.log("เปิดเว็บแล้ว — กำลังกดเข้าสู่ระบบด้วย Digital ID ให้ (ถ้าต้องยืนยันบนมือถือ ให้ยืนยัน)")
+                self._auto_login(page)
                 while browser.is_connected():
                     try:
                         cmd, arg = self._cmd.get(timeout=0.3)
@@ -301,6 +303,65 @@ class WebSession:
             self.log(f"เปิดเบราว์เซอร์ไม่ได้: {e}")
             self.error = f"เปิดเบราว์เซอร์ไม่ได้: {e}\nรายละเอียดอยู่ที่ {log_path()}"
             self.ready.set()
+
+    def _auto_login(self, page):
+        """กดปุ่ม 'เข้าสู่ระบบด้วย Digital ID' แล้วรอจนเข้าหน้าตรวจสอบ. ถ้าไม่สำเร็จไม่ขวาง (ผู้ใช้ทำต่อเองได้)
+        ขั้นเลือกหน่วยยังไม่ทราบโครงสร้างหน้า -> บันทึกข้อความ/ปุ่มบนหน้าลง log เพื่อทำต่อ"""
+        import re as _re
+        try:
+            page.wait_for_load_state("domcontentloaded", timeout=15000)
+            btn = page.get_by_text(_re.compile(r"เข้าสู่ระบบด้วย\s*Digital\s*ID"))
+            if btn.count() and btn.first.is_visible():
+                dlog("autologin: กดปุ่ม Digital ID")
+                btn.first.click()
+            else:
+                dlog(f"autologin: ไม่เจอปุ่ม Digital ID url={page.url}")
+            last = ""
+            for _ in range(240):  # รอได้ ~2 นาที (ยืนยันบนมือถือ)
+                page.wait_for_timeout(500)
+                if not self._cmd.empty():
+                    return
+                url = page.url
+                txt = ""
+                try:
+                    txt = page.inner_text("body", timeout=1000)[:400].replace("\n", " | ")
+                except Exception:
+                    pass
+                if url + txt != last:
+                    last = url + txt
+                    dlog(f"autologin: url={url} text={txt}")
+                    try:
+                        btns = page.eval_on_selector_all(
+                            "button,a,[role=button]", "els=>els.slice(0,25).map(e=>(e.innerText||'').trim()).filter(Boolean)")
+                        dlog(f"autologin: ปุ่ม/ลิงก์={btns}")
+                    except Exception:
+                        pass
+                if "เลือกหน่วยงานที่ต้องการเข้าใช้งาน" in txt or page.get_by_text("เลือกหน่วยงานที่ต้องการเข้าใช้งาน").count():
+                    if self._pick_unit(page):
+                        page.wait_for_timeout(1500)
+                    continue
+                if "recruit4.tdc.mi.th" in url and "login" not in url.lower() and "Digital ID" not in txt:
+                    page.goto(URL)
+                    dlog("autologin: เข้าสู่ระบบแล้ว -> หน้าตรวจสอบ")
+                    self.log("เข้าสู่ระบบแล้ว พร้อมดึงข้อมูล")
+                    return
+        except Exception as e:
+            dlog(f"autologin ERROR: {e}")
+
+    def _pick_unit(self, page):
+        """เลือกหน่วยในหน้าต่าง 'เลือกหน่วยงาน': ตรงกับอำเภอที่ตั้งค่าไว้ก่อน ไม่เจอใช้รายการแรก"""
+        import re as _re
+        items = page.get_by_text(_re.compile(r"^\s*หน่วย\s*สด\.อ\."))
+        n = items.count()
+        if not n:
+            dlog("pickunit: ไม่เจอรายการหน่วย")
+            return False
+        names = [items.nth(i).inner_text().strip() for i in range(n)]
+        idx = next((i for i, t in enumerate(names) if self.unit_hint and self.unit_hint in t), 0)
+        dlog(f"pickunit: {names} -> เลือก {names[idx]}")
+        self.log(f"เลือกหน่วย: {names[idx]}")
+        items.nth(idx).click()
+        return True
 
     @staticmethod
     def _fetch(page, citizen_id):
