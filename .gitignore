@@ -1,0 +1,10 @@
+__pycache__/
+build/
+dist/
+Output/
+release/
+venv/
+.venv/
+templates_orig/
+ตั้งค่าหน่วยงาน.json
+*.pyc

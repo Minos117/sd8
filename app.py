@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox
 import threading
+import update_check
 import tkinter.font as tkfont
 from PIL import Image
 
@@ -262,6 +263,7 @@ class App(ctk.CTk):
             self.after(500, lambda: self._open_settings(first_run=True))
         self.after(900, self._check_templates)
         self._enable_thai_shortcuts()
+        self.after(3000, lambda: self._check_update(silent=True))
 
     # ------------------------------------------------------------
     # UI CONSTRUCTION
@@ -315,6 +317,12 @@ class App(ctk.CTk):
             fg_color=COLOR_BTN_SECONDARY, hover_color=COLOR_BTN_TERTIARY, text_color=COLOR_GOLD,
             corner_radius=0, font=ui_font(14, "bold"),
             command=self._open_settings,
+        ).pack(pady=(8, 0))
+        ctk.CTkButton(
+            right, text="ตรวจอัปเดต", width=120, height=38,
+            fg_color=COLOR_BTN_SECONDARY, hover_color=COLOR_BTN_TERTIARY, text_color=COLOR_GOLD,
+            corner_radius=0, font=ui_font(14, "bold"),
+            command=lambda: self._check_update(silent=False),
         ).pack(pady=(8, 0))
 
     def _build_workspace(self):
@@ -823,6 +831,61 @@ class App(ctk.CTk):
         except Exception:
             pass
         return None
+
+    # ------------------------------------------------------------
+    # อัปเดตจาก GitHub (แจ้งเท่านั้น ต้องกดยืนยันเอง)
+    # ------------------------------------------------------------
+    def _check_update(self, silent=True, url=None):
+        def work():
+            try:
+                info = update_check.check(APP_VER, url or update_check.DEFAULT_URL)
+                self.after(0, lambda: self._update_result(info, silent))
+            except Exception as e:
+                err = str(e) or repr(e)
+                if not silent:
+                    self.after(0, lambda: self._update_failed(err))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _update_failed(self, err):
+        import tkinter.simpledialog as sd
+        new = sd.askstring("ตรวจอัปเดตไม่สำเร็จ",
+                           f"{err}\n\nวางลิงก์ update.json ใหม่ (ถ้ามี) แล้วกด OK:", parent=self)
+        if new and new.strip():
+            self._check_update(silent=False, url=new.strip())
+
+    def _update_result(self, info, silent):
+        if not info:
+            if not silent:
+                messagebox.showinfo("อัปเดต", f"เป็นรุ่นล่าสุดแล้ว ({APP_VER})")
+            return
+        if not messagebox.askyesno(
+                "มีรุ่นใหม่",
+                f"รุ่นปัจจุบัน {APP_VER} -> รุ่นใหม่ {info['version']}\n"
+                f"ไฟล์: {info.get('file','SD8System_Setup.exe')} ({int(info.get('size',0))//1024} KB)\n\n"
+                "ดาวน์โหลดและติดตั้งตอนนี้? (ข้อมูล/ตั้งค่าเดิมไม่ถูกลบ)"):
+            return
+        self.status_var.set("กำลังดาวน์โหลดอัปเดต...")
+
+        def work():
+            try:
+                path = update_check.download(
+                    info, lambda g, t: self.after(0, lambda: self.status_var.set(f"ดาวน์โหลดอัปเดต {g*100//t}%")))
+                self.after(0, lambda: self._run_installer(path))
+            except Exception as e:
+                err = str(e) or repr(e)
+                self.after(0, lambda: (self.status_var.set("อัปเดตไม่สำเร็จ"),
+                                       messagebox.showerror("อัปเดตไม่สำเร็จ", err)))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _run_installer(self, path):
+        if not messagebox.askyesno("พร้อมติดตั้ง", "ตรวจ SHA-256 ผ่านแล้ว\nโปรแกรมจะปิดตัวเองและเปิดตัวติดตั้ง ดำเนินการต่อ?"):
+            return
+        try:
+            os.startfile(path)  # Windows
+        except Exception as e:
+            messagebox.showerror("เปิดตัวติดตั้งไม่ได้", f"{e}\nไฟล์อยู่ที่: {path}")
+            return
+        self.destroy()
 
     def _check_templates(self):
         """เตือนถ้าเทมเพลตเป็นรุ่นเก่า (ไม่มีช่องวันที่อัตโนมัติ/ช่องหน่วยงาน) ซึ่งทำให้ระบบตั้งค่าไม่มีผล"""
