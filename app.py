@@ -111,10 +111,29 @@ def _load_bundled_fonts():
 
 _load_bundled_fonts()
 
-APP_VER = "0.9.13"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
+APP_VER = "0.9.14"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
 TEMPLATE_DIR = BASE_DIR / "templates"
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
+KEEP_OUTPUT_DAYS = 365  # เก็บไฟล์ที่สร้างไว้ 1 ปี แล้วลบอัตโนมัติ
+
+
+def purge_old_output(days: int = KEEP_OUTPUT_DAYS) -> int:
+    """ลบเฉพาะไฟล์ .docx (ที่แอปสร้าง) ในโฟลเดอร์ output ที่แก้ไขล่าสุดนานกว่า days วัน คืนจำนวนที่ลบ"""
+    import time
+    cutoff = time.time() - days * 86400
+    n = 0
+    try:
+        for f in OUTPUT_DIR.glob("*.docx"):
+            try:
+                if f.is_file() and f.stat().st_mtime < cutoff:
+                    f.unlink()
+                    n += 1
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return n
 
 # โลโก้ AMGF1: วางไฟล์ amgf1_logo.png ไว้ข้าง app.py
 LOGO_PATH = BASE_DIR / "sd8_logo.png"
@@ -354,6 +373,7 @@ class App(ctk.CTk):
         self.org = org_settings.load()
         if not org_settings.is_configured():
             self.after(500, lambda: self._open_settings(first_run=True))
+        purge_old_output()
         self.after(900, self._check_templates)
         self._enable_thai_shortcuts()
         self.after(3000, lambda: self._check_update(silent=True))

@@ -1,5 +1,5 @@
 #define MyAppName "ZAIA Document Control"
-#define MyAppVersion "0.9.13"
+#define MyAppVersion "0.9.14"
 #define MyAppPublisher "หน่วยสัสดีอำเภอวานรนิวาส"
 #define MyAppExeName "SD8System.exe"
 
