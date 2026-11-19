@@ -14,6 +14,7 @@ from pathlib import Path
 from tkinter import messagebox
 import threading
 import update_check
+import theme_defs
 import linkage_check
 import tkinter.font as tkfont
 from PIL import Image
@@ -111,7 +112,7 @@ def _load_bundled_fonts():
 
 _load_bundled_fonts()
 
-APP_VER = "0.9.16"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
+APP_VER = "0.9.17"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
 TEMPLATE_DIR = BASE_DIR / "templates"
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -164,6 +165,27 @@ COLOR_TEXT_MUTED = "#8F8FC0"
 COLOR_TAB_SELECTED = "#5B5BFF"   # แท็บที่เลือก (ตัวอักษรขาวอ่านชัด)
 COLOR_TAB_HOVER = "#7B7BFF"
 
+COLOR_ON_ACCENT = "#0B0B1A"
+COLOR_BTN3_HOVER = "#2E2E66"
+COLOR_DANGER_BG, COLOR_DANGER_TEXT, COLOR_DANGER_HOVER = "#4A1020", "#FF4D6D", "#6A1830"
+THEME_PIXEL = True
+THEME_LAYOUT = "side"
+THEME_FONTS: list = []
+THEME_DIRS = [BASE_DIR, Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "SD8System"]
+
+
+def apply_theme_globals(name: str):
+    """เขียนสีของธีมลงตัวแปร COLOR_* (ใช้ตอนสร้างวิดเจ็ตใหม่)"""
+    global THEME_PIXEL, THEME_LAYOUT, THEME_FONTS
+    t = theme_defs.THEMES.get(name) or theme_defs.THEMES[theme_defs.DEFAULT_THEME]
+    g = globals()
+    for k, v in t.items():
+        if k.startswith("COLOR_"):
+            g[k] = v
+    THEME_PIXEL, THEME_LAYOUT, THEME_FONTS = t["pixel"], t["layout"], t["fonts"]
+    ctk.set_appearance_mode("light" if t["mode"] == "light" else "dark")
+
+
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
@@ -180,7 +202,7 @@ def _detect_font(root) -> str:
         available = set(tkfont.families(root))
     except Exception:
         return "TkDefaultFont"
-    for f in _FONT_PRIORITY:
+    for f in list(THEME_FONTS) + _FONT_PRIORITY:
         if f in available:
             return f
     return "TkDefaultFont"
@@ -336,6 +358,8 @@ class App(ctk.CTk):
         super().__init__()
 
         global UI_FONT_FAMILY
+        self.theme_name = theme_defs.load_theme(THEME_DIRS)
+        apply_theme_globals(self.theme_name)
         UI_FONT_FAMILY = _detect_font(self)
 
         self.title(f"ZAIA DOCUMENT CONTROL — ระบบจัดทำเอกสารงานสัสดี  [Beta {APP_VER}]")
@@ -387,6 +411,7 @@ class App(ctk.CTk):
             border_width=2, border_color=COLOR_BORDER,
         )
         header.pack(fill="x", padx=20, pady=(18, 10))
+        self.header = header
 
         logo_label = None
         if LOGO_PATH.exists():
@@ -420,23 +445,11 @@ class App(ctk.CTk):
         right = ctk.CTkFrame(header, fg_color="transparent")
         right.pack(side="right", padx=16, pady=16)
         ctk.CTkButton(
-            right, text="ล้างข้อมูล", width=120, height=38,
-            fg_color="#4A1020", hover_color="#6A1830", text_color="#FF4D6D",
-            corner_radius=0, font=ui_font(14, "bold"),
-            command=self._clear_all,
+            right, text="ตั้งค่า", width=120, height=44,
+            fg_color=COLOR_BTN_SECONDARY, hover_color=COLOR_BTN3_HOVER, text_color=COLOR_GOLD,
+            corner_radius=0, font=ui_font(15, "bold"),
+            command=self._open_hub,
         ).pack()
-        ctk.CTkButton(
-            right, text="ตั้งค่าหน่วยงาน", width=120, height=38,
-            fg_color=COLOR_BTN_SECONDARY, hover_color=COLOR_BTN_TERTIARY, text_color=COLOR_GOLD,
-            corner_radius=0, font=ui_font(14, "bold"),
-            command=self._open_settings,
-        ).pack(pady=(8, 0))
-        ctk.CTkButton(
-            right, text="ตรวจอัปเดต", width=120, height=38,
-            fg_color=COLOR_BTN_SECONDARY, hover_color=COLOR_BTN_TERTIARY, text_color=COLOR_GOLD,
-            corner_radius=0, font=ui_font(14, "bold"),
-            command=lambda: self._check_update(silent=False),
-        ).pack(pady=(8, 0))
 
     # ------------------------------------------------------------
     # โครงหน้าจอ: ซ้าย = เลือกเอกสาร / ขวา = ฟอร์มของเอกสารนั้น
@@ -447,11 +460,53 @@ class App(ctk.CTk):
         self.workspace.pack(fill="both", expand=True, padx=20, pady=(0, 14))
         self.workspace.grid_columnconfigure(0, weight=0)
         self.workspace.grid_columnconfigure(1, weight=1)
-        self.workspace.grid_rowconfigure(0, weight=1)
+        self.workspace.grid_rowconfigure(1, weight=1)
 
+        self.current_group = DOCS[getattr(self, "_start_doc", "PK14")]["group"]
+        if THEME_LAYOUT == "xmb":
+            self._build_crossbar()
         self._build_sidebar()
         self._build_form_area()
-        self._select_doc("PK14")
+        self._select_doc(getattr(self, "_start_doc", "PK14"))
+
+    # ---------- ธีม PSP: แถบหมวดแนวนอนด้านบน (XMB) ----------
+    def _build_crossbar(self):
+        bar = ctk.CTkFrame(self.workspace, fg_color=COLOR_SURFACE, corner_radius=0,
+                           border_width=2, border_color=COLOR_BORDER, height=64)
+        bar.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+        self.group_btns = {}
+        for g in DOC_GROUPS:
+            col = ctk.CTkFrame(bar, fg_color="transparent")
+            col.pack(side="left", padx=(24, 10), pady=6)
+            b = ctk.CTkButton(
+                col, text=g, height=38, corner_radius=19, fg_color="transparent",
+                hover_color=COLOR_BTN_TERTIARY, text_color=COLOR_TEXT_MUTED,
+                font=ui_font(17, "bold"), command=lambda gg=g: self._select_group(gg),
+            )
+            b.pack()
+            ul = ctk.CTkFrame(col, height=3, fg_color="transparent", corner_radius=2)
+            ul.pack(fill="x", padx=14)
+            self.group_btns[g] = (b, ul)
+
+    def _select_group(self, group):
+        self.current_group = group
+        self._refresh_groups()
+        first = next((k for k, i in DOCS.items() if i["group"] == group), None)
+        if first and DOCS.get(self.current_doc, {}).get("group") != group:
+            self._select_doc(first)
+
+    def _refresh_groups(self):
+        if THEME_LAYOUT != "xmb":
+            return
+        for g, (b, ul) in self.group_btns.items():
+            on = g == self.current_group
+            b.configure(text_color=COLOR_GOLD if on else COLOR_TEXT_MUTED)
+            ul.configure(fg_color=COLOR_GOLD if on else "transparent")
+        for g, fr in self.group_frames.items():
+            if g == self.current_group:
+                fr.pack(fill="x")
+            else:
+                fr.pack_forget()
 
     def _row(self, parent, r, pady=6):
         f = ctk.CTkFrame(parent, fg_color="transparent")
@@ -471,11 +526,11 @@ class App(ctk.CTk):
             self.workspace, width=250, fg_color=COLOR_SURFACE,
             corner_radius=0, border_width=2, border_color=COLOR_BORDER,
         )
-        panel.grid(row=0, column=0, sticky="ns", padx=(0, 10))
+        panel.grid(row=1, column=0, sticky="ns", padx=(0, 10))
         panel.grid_propagate(False)
         panel.pack_propagate(False)
 
-        ctk.CTkLabel(panel, text="DOCUMENTS", font=pixel_font(13), text_color=COLOR_GOLD,
+        ctk.CTkLabel(panel, text="DOCUMENTS", font=pixel_font(13) if THEME_PIXEL else ui_font(15, "bold"), text_color=COLOR_GOLD,
                      anchor="w").pack(anchor="w", padx=16, pady=(16, 0))
         ctk.CTkLabel(panel, text="เลือกเอกสารที่ต้องการกรอก", font=ui_font(13),
                      text_color=COLOR_TEXT_MUTED, anchor="w").pack(anchor="w", padx=16, pady=(2, 10))
@@ -492,27 +547,36 @@ class App(ctk.CTk):
         ctk.CTkFrame(panel, height=1, fg_color=COLOR_BORDER).pack(fill="x", padx=14, pady=(2, 10))
 
         self.doc_buttons = {}
+        self.group_frames = {}
+        lst = ctk.CTkScrollableFrame(panel, fg_color="transparent", corner_radius=0,
+                                     scrollbar_button_color=COLOR_BTN_TERTIARY,
+                                     scrollbar_button_hover_color=COLOR_GOLD)
+        lst.pack(fill="both", expand=True, padx=(0, 2), pady=(0, 6))
         for group in DOC_GROUPS:
-            title = group
-            ctk.CTkLabel(panel, text=title, font=ui_font(13, "bold"),
-                         text_color=COLOR_TEXT_MUTED, anchor="w").pack(anchor="w", padx=16, pady=(4, 4))
+            fr = ctk.CTkFrame(lst, fg_color="transparent")
+            fr.pack(fill="x")
+            self.group_frames[group] = fr
+            if THEME_LAYOUT != "xmb":
+                ctk.CTkLabel(fr, text=group, font=ui_font(13, "bold"),
+                             text_color=COLOR_TEXT_MUTED, anchor="w").pack(anchor="w", padx=16, pady=(4, 4))
             for key, info in DOCS.items():
                 if info["group"] != group:
                     continue
                 btn = ctk.CTkButton(
-                    panel, text=info["label"], height=46, corner_radius=0, anchor="w",
-                    fg_color=COLOR_BTN_TERTIARY, hover_color="#2E2E66",
+                    fr, text=info["label"], height=46, corner_radius=0, anchor="w",
+                    fg_color=COLOR_BTN_TERTIARY, hover_color=COLOR_BTN3_HOVER,
                     text_color=COLOR_TEXT_LIGHT, font=ui_font(15, "bold"),
                     command=lambda k=key: self._select_doc(k),
                 )
                 btn.pack(fill="x", padx=14, pady=3)
                 self.doc_buttons[key] = btn
+        self._refresh_groups()
 
     # ---------- ขวา: ฟอร์ม + ปุ่มสร้าง ----------
     def _build_form_area(self):
         area = ctk.CTkFrame(self.workspace, fg_color=COLOR_CARD, corner_radius=0,
                             border_width=2, border_color=COLOR_BORDER)
-        area.grid(row=0, column=1, sticky="nsew")
+        area.grid(row=1, column=1, sticky="nsew")
 
         head = ctk.CTkFrame(area, fg_color=COLOR_PANEL_HEADER, corner_radius=0)
         head.pack(fill="x")
@@ -526,10 +590,15 @@ class App(ctk.CTk):
         bar.pack(side="bottom", fill="x")
         self.make_btn = ctk.CTkButton(
             bar, text="สร้างเอกสารนี้", height=46, width=200, corner_radius=0,
-            fg_color=COLOR_BTN_PRIMARY, hover_color=COLOR_GOLD_HOVER, text_color="#0B0B1A",
+            fg_color=COLOR_BTN_PRIMARY, hover_color=COLOR_GOLD_HOVER, text_color=COLOR_ON_ACCENT,
             font=ui_font(15, "bold"), command=lambda: self._generate(self.current_doc),
         )
         self.make_btn.pack(side="left", padx=(14, 8), pady=10)
+        ctk.CTkButton(
+            bar, text="ล้างข้อมูลหน้านี้", height=46, corner_radius=0,
+            fg_color=COLOR_DANGER_BG, hover_color=COLOR_DANGER_HOVER, text_color=COLOR_DANGER_TEXT,
+            font=ui_font(14, "bold"), command=self._clear_page,
+        ).pack(side="left", padx=8, pady=10)
         ctk.CTkButton(
             bar, text="เปิดโฟลเดอร์ Export", height=46, corner_radius=0,
             fg_color=COLOR_BTN_SECONDARY, hover_color=COLOR_BTN_TERTIARY, text_color=COLOR_SILVER,
@@ -551,8 +620,11 @@ class App(ctk.CTk):
         for k, b in self.doc_buttons.items():
             on = k == key
             b.configure(fg_color=COLOR_GOLD if on else COLOR_BTN_TERTIARY,
-                        text_color="#0B0B1A" if on else COLOR_TEXT_LIGHT,
-                        hover_color=COLOR_GOLD_HOVER if on else "#2E2E66")
+                        text_color=COLOR_ON_ACCENT if on else COLOR_TEXT_LIGHT,
+                        hover_color=COLOR_GOLD_HOVER if on else COLOR_BTN3_HOVER)
+        if THEME_LAYOUT == "xmb":
+            self.current_group = DOCS[key]["group"]
+            self._refresh_groups()
         self.form_title.configure(text=f"ฟอร์ม: {DOCS[key]['label']}")
         self.make_btn.configure(text=f"สร้าง {DOCS[key]['label']}")
         self._update_age()
@@ -598,6 +670,7 @@ class App(ctk.CTk):
     def _build_status_bar(self):
         bar = ctk.CTkFrame(self, fg_color=COLOR_PANEL_HEADER, height=34, corner_radius=0)
         bar.pack(fill="x", side="bottom")
+        self.status_bar = bar
         ctk.CTkLabel(
             bar, textvariable=self.status_var, text_color=COLOR_TEXT_MUTED,
             font=ui_font(12), anchor="w",
@@ -627,6 +700,23 @@ class App(ctk.CTk):
     def _schedule_autosave(self):
         storage.autosave(self._collect_data())
         self.after(4000, self._schedule_autosave)
+
+    def _clear_page(self):
+        """ล้างเฉพาะช่องที่แสดงในหน้า (เอกสาร) ปัจจุบัน"""
+        label = DOCS[self.current_doc]["label"]
+        if not messagebox.askyesno("ยืนยัน", f"ล้างข้อมูลในหน้า \"{label}\" หรือไม่?"):
+            return
+        defaults = {"nationality": "ไทย", "ethnicity": "ไทย", "ref_year": str(datetime.now().year + 543),
+                    "tb_prefix": "ทบ.", "jw_prefix": "ส.น."}
+        for _title, rows in DOC_FORMS[self.current_doc]:
+            for spec_row in rows:
+                for spec in spec_row:
+                    key = spec[2] if spec[0] == "f" else spec[1] if spec[0] == "e" else None
+                    if key in self.vars:
+                        self.vars[key].set(defaults.get(key, ""))
+        self._update_age()
+        storage.autosave(self._collect_data())
+        self.status_var.set(f"ล้างข้อมูลหน้า \"{label}\" แล้ว")
 
     def _clear_all(self):
         if not messagebox.askyesno("ยืนยัน", "ต้องการล้างข้อมูลทั้งหมดในฟอร์มหรือไม่?"):
@@ -893,6 +983,104 @@ class App(ctk.CTk):
     # ------------------------------------------------------------
     # ตั้งค่าหน่วยงาน
     # ------------------------------------------------------------
+    # ------------------------------------------------------------
+    # หน้าตั้งค่ารวม: หน่วยงาน / อัปเดตระบบ / ธีม (แยกหัวข้อ)
+    # ------------------------------------------------------------
+    def _open_hub(self):
+        w = getattr(self, "_hub", None)
+        try:
+            if w is not None and w.winfo_exists():
+                w.destroy()
+        except Exception:
+            pass
+        hub = ctk.CTkToplevel(self)
+        self._hub = hub
+        hub.title("ตั้งค่า")
+        hub.geometry("820x720")
+        hub.minsize(640, 520)
+        hub.configure(fg_color=COLOR_BG)
+        hub.transient(self)
+        body = ctk.CTkScrollableFrame(hub, fg_color=COLOR_BG, corner_radius=0,
+                                      scrollbar_button_color=COLOR_BTN_TERTIARY,
+                                      scrollbar_button_hover_color=COLOR_GOLD)
+        body.pack(fill="both", expand=True, padx=14, pady=14)
+
+        def section(title, hint=None):
+            box = ctk.CTkFrame(body, fg_color=COLOR_SURFACE, corner_radius=0,
+                               border_width=2, border_color=COLOR_BORDER)
+            box.pack(fill="x", pady=(0, 14))
+            ctk.CTkLabel(box, text=title, font=ui_font(18, "bold"), text_color=COLOR_GOLD,
+                         anchor="w").pack(anchor="w", padx=16, pady=(12, 0))
+            if hint:
+                ctk.CTkLabel(box, text=hint, font=ui_font(13), text_color=COLOR_TEXT_MUTED,
+                             anchor="w", justify="left", wraplength=700).pack(anchor="w", padx=16, pady=(2, 6))
+            return box
+
+        def btn(parent, text, cmd, primary=False):
+            return ctk.CTkButton(
+                parent, text=text, height=40, corner_radius=0, font=ui_font(14, "bold"), command=cmd,
+                fg_color=COLOR_BTN_PRIMARY if primary else COLOR_BTN_SECONDARY,
+                hover_color=COLOR_GOLD_HOVER if primary else COLOR_BTN3_HOVER,
+                text_color=COLOR_ON_ACCENT if primary else COLOR_GOLD)
+
+        # 1) หน่วยงาน
+        org = getattr(self, "org", {}) or {}
+        where = f"อำเภอ{org.get('amphoe', '-')} จังหวัด{org.get('province', '-')}" if org.get("amphoe") else "ยังไม่ได้ตั้งค่า"
+        box = section("ตั้งค่าหน่วยงาน", f"ชื่อหน่วย ผู้ลงนาม เลขที่หนังสือ ที่ใช้ในทุกเอกสาร   ปัจจุบัน: {where}")
+        btn(box, "เปิดตั้งค่าหน่วยงาน", self._open_settings).pack(anchor="w", padx=16, pady=(0, 14))
+
+        # 2) อัปเดตระบบ
+        box = section("อัปเดตระบบ", f"รุ่นที่ติดตั้ง: {APP_VER}   (ตรวจเฉพาะแจ้งเตือน ต้องกดยืนยันก่อนติดตั้งทุกครั้ง)")
+        btn(box, "ตรวจอัปเดตตอนนี้", lambda: self._check_update(silent=False)).pack(anchor="w", padx=16, pady=(0, 14))
+
+        # 3) ธีม
+        box = section("ธีม", "คลิกการ์ดเพื่อเปลี่ยนธีมทันที (จำค่าไว้ใช้ครั้งต่อไป)")
+        grid = ctk.CTkFrame(box, fg_color="transparent")
+        grid.pack(fill="x", padx=12, pady=(0, 14))
+        grid.grid_columnconfigure((0, 1), weight=1, uniform="th")
+        for i, name in enumerate(theme_defs.ORDER):
+            t = theme_defs.THEMES[name]
+            on = name == self.theme_name
+            card = ctk.CTkFrame(grid, fg_color=COLOR_BTN_TERTIARY, corner_radius=0,
+                                border_width=3 if on else 1,
+                                border_color=COLOR_GOLD if on else COLOR_BORDER)
+            card.grid(row=i // 2, column=i % 2, sticky="ew", padx=4, pady=4)
+            sw = ctk.CTkFrame(card, fg_color="transparent")
+            sw.pack(anchor="w", padx=10, pady=(10, 4))
+            for col in (t["COLOR_BG"], t["COLOR_SURFACE"], t["COLOR_GOLD"], t["COLOR_TEXT_LIGHT"]):
+                ctk.CTkFrame(sw, width=34, height=22, corner_radius=0, fg_color=col,
+                             border_width=1, border_color=COLOR_BORDER).pack(side="left", padx=(0, 3))
+            extra = "  — แถบหมวดแนวนอนแบบ XMB" if t["layout"] == "xmb" else ""
+            lbl = ctk.CTkLabel(card, text=("✓ " if on else "") + t["label"] + extra,
+                               font=ui_font(15, "bold"), text_color=COLOR_GOLD if on else COLOR_TEXT_LIGHT, anchor="w")
+            lbl.pack(anchor="w", padx=10, pady=(0, 10))
+            for wdg in (card, sw, lbl):
+                wdg.bind("<Button-1>", lambda e, n=name: self._apply_theme(n))
+            card.configure(cursor="hand2")
+
+    def _apply_theme(self, name):
+        if name == self.theme_name:
+            return
+        self.theme_name = name
+        theme_defs.save_theme(THEME_DIRS, name)
+        apply_theme_globals(name)
+        global UI_FONT_FAMILY
+        UI_FONT_FAMILY = _detect_font(self)
+        self._start_doc = self.current_doc or "PK14"
+        for w in (self.header, self.workspace, self.status_bar):
+            try:
+                w.destroy()
+            except Exception:
+                pass
+        self.age_labels = []
+        self.configure(fg_color=COLOR_BG)
+        self._build_header()
+        self._build_workspace()
+        self._build_status_bar()
+        self._update_age()
+        self.status_var.set(f"เปลี่ยนธีมเป็น {theme_defs.THEMES[name]['label']} แล้ว")
+        self.after(60, self._open_hub)
+
     def _open_settings(self, first_run=False):
         if getattr(self, "_settings_win", None) is not None:
             try:

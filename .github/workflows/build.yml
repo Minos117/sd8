@@ -9,6 +9,7 @@ on:
       - "web_import.py"
       - "linkage_check.py"
       - "update_check.py"
+      - "theme_defs.py"
       - "org_settings.py"
       - "settings_dialog.py"
       - "docx_engine.py"
