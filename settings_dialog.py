@@ -153,3 +153,125 @@ class SettingsDialog(ctk.CTkToplevel):
         self.destroy()
         if self.on_cancel:
             self.on_cancel()
+
+
+def thai_id_valid(digits: str) -> bool:
+    """ตรวจเลขบัตรประชาชน 13 หลักด้วยหลักตรวจสอบมาตรฐาน"""
+    if len(digits) != 13 or not digits.isdigit():
+        return False
+    s = sum(int(digits[i]) * (13 - i) for i in range(12))
+    return (11 - s % 11) % 10 == int(digits[12])
+
+
+def _fmt_id(d: str) -> str:
+    cuts = (1, 5, 10, 12)
+    out, last = "", 0
+    for c in cuts:
+        if len(d) > last:
+            out += d[last:c] + "-"
+        last = c
+    return (out + d[last:]) if len(d) > last else out.rstrip("-")
+
+
+class IdPromptDialog(ctk.CTkToplevel):
+    """ถามเลขบัตรประชาชนก่อนดึงข้อมูลจากเว็บ: พิมพ์/วางได้ จัดรูปแบบอัตโนมัติ ตรวจหลักตรวจสอบ Enter=ดึง Esc=ยกเลิก"""
+
+    def __init__(self, parent, theme, font, initial, on_ok, on_cancel=None):
+        super().__init__(parent)
+        self.on_ok, self.on_cancel = on_ok, on_cancel
+        self.var = ctk.StringVar()
+        self._busy = False
+        self.title("ดึงข้อมูลจากเว็บ TDC")
+        self.configure(fg_color=theme["bg"])
+        self.resizable(False, False)
+        self.transient(parent)
+        w, h = 520, 270
+        try:
+            scale = float(self._get_window_scaling()) or 1.0
+        except Exception:
+            scale = 1.0
+        px = parent.winfo_rootx() + max(0, (parent.winfo_width() - int(w * scale)) // 2)
+        py = parent.winfo_rooty() + max(0, (parent.winfo_height() - int(h * scale)) // 3)
+        self.geometry(f"{w}x{h}+{px}+{py}")
+        self.protocol("WM_DELETE_WINDOW", self._cancel)
+
+        box = ctk.CTkFrame(self, fg_color=theme["surface"], corner_radius=0,
+                           border_width=2, border_color=theme["entry_border"])
+        box.pack(fill="both", expand=True, padx=14, pady=14)
+        ctk.CTkLabel(box, text="เลขบัตรประชาชนที่ต้องการดึง", font=font(18, "bold"),
+                     text_color=theme["accent"], anchor="w").pack(anchor="w", padx=18, pady=(16, 2))
+        ctk.CTkLabel(box, text="พิมพ์หรือวาง (Ctrl+V) 13 หลัก ขีดคั่นใส่หรือไม่ใส่ก็ได้", font=font(13),
+                     text_color=theme["muted"], anchor="w").pack(anchor="w", padx=18)
+        self.entry = ctk.CTkEntry(box, textvariable=self.var, height=46, width=420, corner_radius=0,
+                                  fg_color=theme["entry_bg"], text_color=theme["entry_text"],
+                                  border_width=2, border_color=theme["entry_border"], font=font(22, "bold"))
+        self.entry.pack(padx=18, pady=(12, 4))
+        self.hint = ctk.CTkLabel(box, text="", font=font(13), text_color=theme["muted"], anchor="w")
+        self.hint.pack(anchor="w", padx=18)
+
+        row = ctk.CTkFrame(box, fg_color="transparent")
+        row.pack(fill="x", padx=18, pady=(10, 14), side="bottom")
+        self.ok_btn = ctk.CTkButton(row, text="ดึงข้อมูล", height=42, width=150, corner_radius=0,
+                                    fg_color=theme["accent"], hover_color=theme["accent_hover"],
+                                    text_color="#0B0B1A", font=font(15, "bold"), command=self._ok)
+        self.ok_btn.pack(side="right")
+        ctk.CTkButton(row, text="ยกเลิก", height=42, width=100, corner_radius=0,
+                      fg_color=theme["btn2"], hover_color=theme["btn3"], text_color=theme["text"],
+                      font=font(14, "bold"), command=self._cancel).pack(side="right", padx=(0, 8))
+
+        self.var.trace_add("write", self._on_change)
+        self.var.set("".join(c for c in (initial or "") if c.isdigit())[:13])
+        self.bind("<Return>", lambda e: self._ok())
+        self.bind("<Escape>", lambda e: self._cancel())
+        self.after(80, self._focus)
+
+    def _focus(self):
+        try:
+            self.grab_set()
+            self.entry.focus_force()
+            self.entry.icursor("end")
+        except Exception:
+            pass
+
+    def digits(self):
+        return "".join(c for c in self.var.get() if c.isdigit())
+
+    def _on_change(self, *_):
+        if self._busy:
+            return
+        d = self.digits()[:13]
+        shown = _fmt_id(d)
+        if shown != self.var.get():
+            self._busy = True
+            self.var.set(shown)
+            self._busy = False
+            try:
+                self.entry.icursor("end")
+            except Exception:
+                pass
+        if len(d) < 13:
+            self.hint.configure(text=f"{len(d)}/13 หลัก", text_color="#9AA0C8")
+            self.ok_btn.configure(state="disabled")
+        elif not thai_id_valid(d):
+            self.hint.configure(text="เลขนี้ไม่ผ่านการตรวจหลักตรวจสอบ — เช็กตัวเลขอีกครั้ง", text_color="#FF4D6D")
+            self.ok_btn.configure(state="disabled")
+        else:
+            self.hint.configure(text="เลขถูกต้อง ✓ กด Enter เพื่อดึงข้อมูล", text_color="#5DFF9A")
+            self.ok_btn.configure(state="normal")
+
+    def _ok(self):
+        d = self.digits()
+        if not thai_id_valid(d):
+            return
+        self.grab_release()
+        self.destroy()
+        self.on_ok(d)
+
+    def _cancel(self):
+        try:
+            self.grab_release()
+        except Exception:
+            pass
+        self.destroy()
+        if self.on_cancel:
+            self.on_cancel()

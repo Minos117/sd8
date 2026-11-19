@@ -72,7 +72,7 @@ try:
     from utils import build_mapping, ALL_FIELD_KEYS
     import storage
     import org_settings
-    from settings_dialog import SettingsDialog
+    from settings_dialog import SettingsDialog, IdPromptDialog
 except Exception:
     _log_path = _write_crash_log("STARTUP IMPORT ERROR")
     _root = None
@@ -111,7 +111,7 @@ def _load_bundled_fonts():
 
 _load_bundled_fonts()
 
-APP_VER = "0.9.4"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
+APP_VER = "0.9.5"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
 TEMPLATE_DIR = BASE_DIR / "templates"
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -626,12 +626,31 @@ class App(ctk.CTk):
     # ------------------------------------------------------------
     def _pull_from_web(self):
         try:
-            from web_import import WebSession
+            import web_import  # noqa: F401  (ตรวจว่า playwright พร้อมใช้)
         except Exception as e:
             messagebox.showerror("ใช้ฟีเจอร์นี้ไม่ได้", f"ขาดไลบรารี playwright หรือโหลดไม่สำเร็จ\n\n{e}\n\n"
                                  "ติดตั้ง: pip install playwright  แล้ว  playwright install chromium")
             return
 
+        # ถามเลขบัตรก่อนเสมอ แล้วค่อยเปิดเบราว์เซอร์/เข้าสู่ระบบ/ดึงข้อมูล
+        IdPromptDialog(
+            self, self._theme(), ui_font, self.entries["idcard"].get(),
+            on_ok=self._start_pull,
+            on_cancel=lambda: self.status_var.set("ยกเลิกการดึงข้อมูล"),
+        )
+
+    def _theme(self):
+        return {
+            "bg": COLOR_BG, "surface": COLOR_SURFACE, "text": COLOR_TEXT_LIGHT, "muted": COLOR_TEXT_MUTED,
+            "accent": COLOR_GOLD, "accent_hover": COLOR_GOLD_HOVER, "btn2": COLOR_BTN_SECONDARY,
+            "btn3": COLOR_BTN_TERTIARY, "entry_bg": COLOR_ENTRY_BG, "entry_border": COLOR_ENTRY_BORDER,
+            "entry_text": COLOR_ENTRY_TEXT,
+        }
+
+    def _start_pull(self, cid):
+        from web_import import WebSession
+        self._pending_cid = cid
+        self.vars["idcard"].set(cid)
         sess = getattr(self, "_web", None)
         if sess is not None and sess.is_open and sess.ready.is_set() and not sess.error:
             self._ask_and_fetch()
@@ -686,15 +705,7 @@ class App(ctk.CTk):
         self._ask_and_fetch()
 
     def _ask_and_fetch(self):
-        cid = "".join(ch for ch in self.entries["idcard"].get() if ch.isdigit())
-        if len(cid) != 13:
-            from tkinter import simpledialog
-            cid = simpledialog.askstring("เลขบัตรประชาชน", "กรอกเลขบัตร 13 หลักที่ต้องการดึง:", parent=self) or ""
-            cid = "".join(ch for ch in cid if ch.isdigit())
-            if len(cid) != 13:
-                self.status_var.set("เลขบัตรไม่ครบ 13 หลัก — ยกเลิก")
-                return
-
+        cid = getattr(self, "_pending_cid", "") or "".join(ch for ch in self.entries["idcard"].get() if ch.isdigit())
         self.web_btn.configure(state="disabled")
         self.status_var.set(f"กำลังค้นหาและดึงข้อมูล {cid} จากเว็บ...")
 
@@ -869,12 +880,7 @@ class App(ctk.CTk):
                     return
             except Exception:
                 pass
-        theme = {
-            "bg": COLOR_BG, "surface": COLOR_SURFACE, "text": COLOR_TEXT_LIGHT, "muted": COLOR_TEXT_MUTED,
-            "accent": COLOR_GOLD, "accent_hover": COLOR_GOLD_HOVER, "btn2": COLOR_BTN_SECONDARY,
-            "btn3": COLOR_BTN_TERTIARY, "entry_bg": COLOR_ENTRY_BG, "entry_border": COLOR_ENTRY_BORDER,
-            "entry_text": COLOR_ENTRY_TEXT,
-        }
+        theme = self._theme()
         self._settings_win = SettingsDialog(
             self, theme, ui_font, self.org, self._on_settings_saved,
             first_run=first_run,

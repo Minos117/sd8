@@ -387,27 +387,54 @@ class WebSession:
             return None
 
     def _login_via_linkage(self, page):
-        """เข้า Recruit ด้วยโทเค็นของ Linkage2Client (เหมือนเมนู Open Recruit System) คืน True ถ้าใช้เส้นทางนี้"""
+        """ทำเหมือนคลิกขวาไอคอน Linkage2Client -> Open Recruit System แต่เปิดในเบราว์เซอร์ของโปรแกรม
+        เปิด /signin-recruit ตรงๆ ก่อน (ไม่พึ่งการอ่าน /status) ถ้ายังไม่ยืนยันตัวตนค่อยสแกน ThaiD ที่ /signin แล้วเปิดซ้ำ
+        คืน True ถ้าใช้เส้นทางนี้ (ต่อ Linkage ได้)"""
         base = self._linkage_base()
         st = self._linkage_authed()
-        dlog(f"linkage: authed={st}")
+        dlog(f"linkage: status={st}")
         if st is None:
             return False
-        if st is False:
-            self.log("Linkage2Client ยังไม่ได้ยืนยันตัวตน — สแกน ThaiD ที่หน้าที่เปิดให้ (ทำครั้งเดียวต่อรอบเซสชัน)")
-            page.goto(base + "/signin")
-            for _ in range(360):  # รอสแกน ~3 นาที
-                page.wait_for_timeout(500)
-                if not self._cmd.empty():
+
+        def to_recruit():
+            dlog("linkage: เปิด /signin-recruit")
+            try:
+                page.goto(base + "/signin-recruit", wait_until="domcontentloaded", timeout=15000)
+            except Exception as e:
+                dlog(f"linkage: goto signin-recruit: {e}")
+            for _ in range(24):  # รอ redirect ไป recruit4 ~12 วินาที
+                if "recruit4.tdc.mi.th" in page.url:
                     return True
-                if self._linkage_authed():
-                    break
-            else:
-                dlog("linkage: หมดเวลารอสแกน")
+                page.wait_for_timeout(500)
+            try:
+                dlog("linkage: signin-recruit ไม่ redirect url=%s text=%s" % (
+                    page.url, page.inner_text("body", timeout=1000)[:200].replace("\n", " | ")))
+            except Exception:
+                pass
+            return False
+
+        self.log("เข้า Recruit ผ่าน Linkage2Client (เหมือนเมนู Open Recruit System)...")
+        if to_recruit():
+            return True
+        self.log("Linkage2Client ยังไม่ได้ยืนยันตัวตน — สแกน ThaiD ที่หน้าที่เปิด (ครั้งเดียวต่อรอบเซสชัน)")
+        page.goto(base + "/signin")
+        for _ in range(360):  # รอสแกน ~3 นาที
+            page.wait_for_timeout(500)
+            if not self._cmd.empty():
                 return True
-        dlog("linkage: เปิด /signin-recruit")
-        self.log("เข้า Recruit ด้วยโทเค็นจาก Linkage2Client...")
-        page.goto(base + "/signin-recruit")
+            body = ""
+            try:
+                body = page.inner_text("body", timeout=500)
+            except Exception:
+                pass
+            if (self._linkage_authed() or "/callback" in page.url and "Successful" in body
+                    or "Authentication Successful" in body):
+                break
+        else:
+            dlog("linkage: หมดเวลารอสแกน")
+            return True
+        page.wait_for_timeout(800)
+        to_recruit()
         return True
 
     def _pick_unit(self, page):
