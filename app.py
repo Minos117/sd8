@@ -111,7 +111,7 @@ def _load_bundled_fonts():
 
 _load_bundled_fonts()
 
-APP_VER = "0.9.2"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
+APP_VER = "0.9.3"  # Beta — ต้องตรงกับ installer.iss (AppVersion) และ update.json
 TEMPLATE_DIR = BASE_DIR / "templates"
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -754,11 +754,21 @@ class App(ctk.CTk):
             self.status_var.set("เปิดเบราว์เซอร์ไม่สำเร็จ")
             messagebox.showerror("เปิดเบราว์เซอร์ไม่สำเร็จ", s.error)
             return
-        messagebox.showinfo(
-            "Login เข้า TDC Recruit",
-            "ในหน้าต่างเบราว์เซอร์ที่เปิดขึ้น ให้ Login ให้เสร็จก่อน\n"
-            "แล้วกด OK ที่นี่ โปรแกรมจะค้นหาและดึงข้อมูลให้ทันที",
-        )
+        self.status_var.set("กำลังเข้าสู่ระบบ Recruit ด้วยโทเค็น Linkage2Client... (ถ้าต้องสแกน ThaiD ให้สแกนที่หน้าที่เปิด)")
+        self._wait_login()
+
+    def _wait_login(self):
+        s = self._web
+        if not s.login_done.is_set():
+            self.after(500, self._wait_login)
+            return
+        if not s.login_ok:
+            messagebox.showinfo(
+                "Login เข้า TDC Recruit",
+                "เข้าสู่ระบบอัตโนมัติไม่สำเร็จ\n"
+                "ในหน้าต่างเบราว์เซอร์ที่เปิดขึ้น ให้ Login เองให้เสร็จ\n"
+                "แล้วกด OK ที่นี่ โปรแกรมจะค้นหาและดึงข้อมูลให้ทันที",
+            )
         self._ask_and_fetch()
 
     def _ask_and_fetch(self):

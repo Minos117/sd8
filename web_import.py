@@ -241,6 +241,8 @@ class WebSession:
         self._thread = None
         self.ready = threading.Event()   # เบราว์เซอร์พร้อมแล้ว (หรือเปิดไม่สำเร็จ ดู self.error)
         self.error = None
+        self.login_done = threading.Event()  # autologin จบแล้ว (สำเร็จหรือไม่ ดู login_ok)
+        self.login_ok = False
 
     @property
     def is_open(self):
@@ -310,12 +312,13 @@ class WebSession:
         import re as _re
         try:
             page.wait_for_load_state("domcontentloaded", timeout=15000)
-            btn = page.get_by_text(_re.compile(r"เข้าสู่ระบบด้วย\s*Digital\s*ID"))
-            if btn.count() and btn.first.is_visible():
-                dlog("autologin: กดปุ่ม Digital ID")
-                btn.first.click()
-            else:
-                dlog(f"autologin: ไม่เจอปุ่ม Digital ID url={page.url}")
+            if not self._login_via_linkage(page):
+                btn = page.get_by_text(_re.compile(r"เข้าสู่ระบบด้วย\s*Digital\s*ID"))
+                if btn.count() and btn.first.is_visible():
+                    dlog("autologin: กดปุ่ม Digital ID")
+                    btn.first.click()
+                else:
+                    dlog(f"autologin: ไม่เจอปุ่ม Digital ID url={page.url}")
             last = ""
             for _ in range(240):  # รอได้ ~2 นาที (ยืนยันบนมือถือ)
                 page.wait_for_timeout(500)
@@ -343,10 +346,58 @@ class WebSession:
                 if "recruit4.tdc.mi.th" in url and "login" not in url.lower() and "Digital ID" not in txt:
                     page.goto(URL)
                     dlog("autologin: เข้าสู่ระบบแล้ว -> หน้าตรวจสอบ")
+                    self.login_ok = True
+                    self.login_done.set()
                     self.log("เข้าสู่ระบบแล้ว พร้อมดึงข้อมูล")
                     return
         except Exception as e:
             dlog(f"autologin ERROR: {e}")
+        finally:
+            self.login_done.set()
+
+    @staticmethod
+    def _linkage_base():
+        try:
+            from linkage_check import port
+            return f"http://127.0.0.1:{port()}"
+        except Exception:
+            return "http://127.0.0.1:15043"
+
+    def _linkage_authed(self):
+        """True/False = Linkage2Client ตอบ /status (ล็อกอิน ThaiD แล้วหรือยัง), None = ต่อบริการไม่ได้"""
+        import json as _json
+        import urllib.request as _ur
+        try:
+            with _ur.urlopen(self._linkage_base() + "/status", timeout=3) as r:
+                d = _json.loads(r.read().decode("utf-8", "ignore"))
+            return bool({str(k).lower(): v for k, v in d.items()}.get("isauthenticated"))
+        except Exception as e:
+            dlog(f"linkage status: ต่อไม่ได้ ({e})")
+            return None
+
+    def _login_via_linkage(self, page):
+        """เข้า Recruit ด้วยโทเค็นของ Linkage2Client (เหมือนเมนู Open Recruit System) คืน True ถ้าใช้เส้นทางนี้"""
+        base = self._linkage_base()
+        st = self._linkage_authed()
+        dlog(f"linkage: authed={st}")
+        if st is None:
+            return False
+        if st is False:
+            self.log("Linkage2Client ยังไม่ได้ยืนยันตัวตน — สแกน ThaiD ที่หน้าที่เปิดให้ (ทำครั้งเดียวต่อรอบเซสชัน)")
+            page.goto(base + "/signin")
+            for _ in range(360):  # รอสแกน ~3 นาที
+                page.wait_for_timeout(500)
+                if not self._cmd.empty():
+                    return True
+                if self._linkage_authed():
+                    break
+            else:
+                dlog("linkage: หมดเวลารอสแกน")
+                return True
+        dlog("linkage: เปิด /signin-recruit")
+        self.log("เข้า Recruit ด้วยโทเค็นจาก Linkage2Client...")
+        page.goto(base + "/signin-recruit")
+        return True
 
     def _pick_unit(self, page):
         """เลือกหน่วยในหน้าต่าง 'เลือกหน่วยงาน': ตรงกับอำเภอที่ตั้งค่าไว้ก่อน ไม่เจอใช้รายการแรก"""

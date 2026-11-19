@@ -81,3 +81,16 @@ def ensure_running(wait=12):
         if running_names():
             return "started", f"เปิด Linkage2Client ให้แล้ว ({exe})"
     return "started", f"สั่งเปิดแล้ว แต่ยังไม่เห็นโปรเซสชื่อ linkage ({exe}) — อาจใช้ชื่ออื่น"
+
+
+def port() -> int:
+    """พอร์ตของ Linkage2Client จาก appsettings.json ข้างตัว exe (ไม่เจอ = 15043)"""
+    import json
+    exe = find_exe()
+    if exe:
+        try:
+            p = os.path.join(os.path.dirname(exe), "appsettings.json")
+            return int(json.loads(open(p, encoding="utf-8-sig").read())["AppConfig"]["Port"])
+        except Exception:
+            pass
+    return 15043
