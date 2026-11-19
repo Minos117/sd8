@@ -1,0 +1,10 @@
+{
+  "setup_rev": 1,
+  "version": "0.9.0",
+  "channel": "beta",
+  "file": "SD8System_Setup.exe",
+  "url": "",
+  "sha256": "",
+  "size": 0,
+  "note": "placeholder - replace with release\\update.json from MakeRelease.ps1 after build"
+}
