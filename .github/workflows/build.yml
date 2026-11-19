@@ -1,0 +1,66 @@
+name: Build installer and publish update
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "app.py"
+      - "web_import.py"
+      - "linkage_check.py"
+      - "update_check.py"
+      - "org_settings.py"
+      - "settings_dialog.py"
+      - "docx_engine.py"
+      - "utils.py"
+      - "storage.py"
+      - "installer.iss"
+      - "SD8System.spec"
+      - "templates/**"
+      - "fonts/**"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Ensure Inno Setup
+        shell: pwsh
+        run: |
+          $p = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ }
+          if (-not $p) { choco install innosetup -y --no-progress }
+
+      - name: Build (build_all.bat)
+        shell: cmd
+        run: build_all.bat nopause
+
+      - name: Show result
+        shell: pwsh
+        run: |
+          Get-Item Output\SD8System_Setup.exe | Format-List Name, Length
+          Get-Content release\update.json
+
+      - name: Commit installer and update.json
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force installer | Out-Null
+          Copy-Item Output\SD8System_Setup.exe installer\SD8System_Setup.exe -Force
+          Copy-Item release\update.json update.json -Force
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add installer/SD8System_Setup.exe update.json
+          git commit -m "Build installer + update.json [skip ci]"
+          git push
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SD8System_Setup
+          path: Output/SD8System_Setup.exe

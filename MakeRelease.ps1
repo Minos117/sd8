@@ -1,6 +1,6 @@
 ﻿# MakeRelease.ps1 - สร้าง update.json (SHA-256) และ ZIP ของเวอร์ชันที่เพิ่ง build
 # ใช้: powershell -File MakeRelease.ps1 [-BaseUrl "https://raw.githubusercontent.com/<user>/<repo>/main/"]
-# ไม่ใส่ BaseUrl = ใช้ลิงก์ GitHub Releases ของ Minos117/sd8 (tag v<เวอร์ชัน>)
+# ไม่ใส่ BaseUrl = ใช้ลิงก์ GitHub Raw ของ Minos117/sd8 (installer/SD8System_Setup.exe)
 param([string]$BaseUrl = "")
 if (-not $BaseUrl) { $BaseUrl = "RELEASE_AUTO" }
 $ErrorActionPreference = "Stop"
@@ -27,7 +27,7 @@ $json = [ordered]@{
     version  = $ver
     channel  = "beta"
     file     = "SD8System_Setup.exe"
-    url      = if ($BaseUrl -eq "RELEASE_AUTO") { "https://github.com/Minos117/sd8/releases/download/v$ver/SD8System_Setup.exe" } else { $BaseUrl.TrimEnd('/') + "/SD8System_Setup.exe" }
+    url      = if ($BaseUrl -eq "RELEASE_AUTO") { "https://raw.githubusercontent.com/Minos117/sd8/main/installer/SD8System_Setup.exe" } else { $BaseUrl.TrimEnd('/') + "/SD8System_Setup.exe" }
     sha256   = $hash
     size     = $size
     released = (Get-Date -Format "yyyy-MM-dd")
